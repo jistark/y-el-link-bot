@@ -93,8 +93,12 @@ async function fetchZappingRatings(): Promise<{ channel: typeof ZAPPING_CHANNELS
     ZAPPING_CHANNELS.map(async (channel) => {
       try {
         const response = await fetch(`https://metrics.zappingtv.com/public/rating/${channel.id}`);
-        const rating = await response.text();
-        return { channel, rating: rating.trim() };
+        const html = await response.text();
+        // La API devuelve HTML tipo: <div id="channel_rating"> 10.8</div>
+        // Extraemos solo el número
+        const match = html.match(/>[\s]*([\d.]+)/);
+        const rating = match ? match[1] : html.replace(/<[^>]*>/g, '').trim();
+        return { channel, rating };
       } catch {
         return { channel, rating: '—' };
       }
