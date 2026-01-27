@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Referencias y docs internas
+ref/
+CLAUDE.md
+TELEGRAM_BOT_DESIGN.md
