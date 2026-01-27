@@ -114,8 +114,10 @@ function getChileTime(): string {
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
 
-  // Comando /rating-zapping
-  bot.command('rating_zapping', async (ctx) => {
+  // Comando /rating_zapping (también responde a /rz como alias corto)
+  bot.command(['rating_zapping', 'rz'], async (ctx) => {
+    console.log('Comando rating_zapping recibido');
+
     const ratings = await fetchZappingRatings();
     const time = getChileTime();
 
