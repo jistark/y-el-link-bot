@@ -1,12 +1,15 @@
 services:
-  - type: worker
+  - type: web
     name: y-el-link-bot
     runtime: docker
     repo: https://github.com/jistark/y-el-link-bot.git
     branch: main
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAPH_ACCESS_TOKEN
+        sync: false
+      - key: WEBHOOK_URL
         sync: false
