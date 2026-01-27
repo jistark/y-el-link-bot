@@ -78,8 +78,62 @@ function createActionKeyboard(pageId: string, originalUrl: string): InlineKeyboa
     .url('🐦 Twitter', twitterUrl);
 }
 
+// Canales de TV para rating Zapping
+const ZAPPING_CHANNELS = [
+  { id: 'tvno', name: 'TVN', emoji: '🔴' },
+  { id: 'mega', name: 'Mega', emoji: '🟢' },
+  { id: '13', name: 'Canal 13', emoji: '⚪' },
+  { id: 'chv', name: 'CHV', emoji: '🟡' },
+  { id: 'lared', name: 'La Red', emoji: '🟠' },
+  { id: 'tvm', name: 'TV+', emoji: '🔵' },
+];
+
+async function fetchZappingRatings(): Promise<{ channel: typeof ZAPPING_CHANNELS[0]; rating: string }[]> {
+  const results = await Promise.all(
+    ZAPPING_CHANNELS.map(async (channel) => {
+      try {
+        const response = await fetch(`https://metrics.zappingtv.com/public/rating/${channel.id}`);
+        const rating = await response.text();
+        return { channel, rating: rating.trim() };
+      } catch {
+        return { channel, rating: '—' };
+      }
+    })
+  );
+  return results;
+}
+
+function getChileTime(): string {
+  const now = new Date();
+  const chileTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
+  const hours = chileTime.getHours().toString().padStart(2, '0');
+  const minutes = chileTime.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
+
+  // Comando /rating-zapping
+  bot.command('rating_zapping', async (ctx) => {
+    const ratings = await fetchZappingRatings();
+    const time = getChileTime();
+
+    // Ordenar por rating (mayor a menor)
+    const sorted = ratings.sort((a, b) => {
+      const rA = parseFloat(a.rating) || 0;
+      const rB = parseFloat(b.rating) || 0;
+      return rB - rA;
+    });
+
+    const lines = sorted.map(({ channel, rating }) =>
+      `${channel.emoji} ${channel.name}: <b>${rating}</b>`
+    );
+
+    const message = `📺 <b>Rating Zapping</b> (${time} hrs)\n\n${lines.join('\n')}\n\n<i>Fuente: zapping.com</i>`;
+
+    await ctx.reply(message, { parse_mode: 'HTML' });
+  });
 
   // Handler para mensajes con URLs
   bot.on('message:text', async (ctx) => {
