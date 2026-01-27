@@ -9,5 +9,15 @@ if (!token) {
 
 const bot = createBot(token);
 
+// Graceful shutdown para Render/Docker
+const shutdown = () => {
+  console.log('Apagando bot...');
+  bot.stop();
+  process.exit(0);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
 console.log('Bot iniciando...');
 bot.start();

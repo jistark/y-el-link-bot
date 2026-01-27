@@ -1,0 +1,12 @@
+services:
+  - type: worker
+    name: y-el-link-bot
+    runtime: docker
+    repo: https://github.com/jistark/y-el-link-bot.git
+    branch: main
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAPH_ACCESS_TOKEN
+        sync: false
