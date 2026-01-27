@@ -81,10 +81,10 @@ function createActionKeyboard(pageId: string, originalUrl: string): InlineKeyboa
 // Canales de TV para rating Zapping
 const ZAPPING_CHANNELS = [
   { id: 'tvno', name: 'TVN', emoji: '🔴' },
-  { id: 'mega', name: 'Mega', emoji: '🟢' },
-  { id: '13', name: 'Canal 13', emoji: '⚪' },
-  { id: 'chv', name: 'CHV', emoji: '🟡' },
-  { id: 'lared', name: 'La Red', emoji: '🟠' },
+  { id: 'mega', name: 'Mega', emoji: '🟣' },
+  { id: '13', name: 'Canal 13', emoji: '🟠' },
+  { id: 'chv', name: 'CHV', emoji: '⚪' },
+  { id: 'lared', name: 'La Red', emoji: '🟢' },
   { id: 'tvm', name: 'TV+', emoji: '🔵' },
 ];
 
