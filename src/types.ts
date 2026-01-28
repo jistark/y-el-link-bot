@@ -6,7 +6,7 @@ export interface Article {
   body: string;
   images?: { url: string; caption?: string }[];
   url: string;
-  source: 'elmercurio' | 'lasegunda' | 'latercera' | 'df' | 'theverge';
+  source: 'elmercurio' | 'lasegunda' | 'latercera' | 'df' | 'theverge' | 'lun';
 }
 
 export type TelegraphNode =

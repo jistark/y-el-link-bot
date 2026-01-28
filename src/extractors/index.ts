@@ -3,6 +3,7 @@ import * as df from './df.js';
 import * as elmercurio from './elmercurio.js';
 import * as lasegunda from './lasegunda.js';
 import * as latercera from './latercera.js';
+import * as lun from './lun.js';
 import * as theverge from './theverge.js';
 
 const URL_PATTERNS = {
@@ -11,6 +12,7 @@ const URL_PATTERNS = {
   latercera: /latercera\.com/,
   df: /df\.cl/,
   theverge: /theverge\.com/,
+  lun: /lun\.com/,
 } as const;
 
 export type Source = keyof typeof URL_PATTERNS;
@@ -42,6 +44,9 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'theverge':
       return theverge.extract(url);
+
+    case 'lun':
+      return lun.extract(url);
 
     default:
       throw new Error('URL no corresponde a un diario soportado');

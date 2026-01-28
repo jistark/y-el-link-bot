@@ -28,6 +28,7 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   latercera: 'lt',
   df: 'df',
   theverge: 'vrg',
+  lun: 'lun',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -390,6 +391,7 @@ function getSourceName(source: Article['source']): string {
     latercera: 'La Tercera',
     df: 'Diario Financiero',
     theverge: 'The Verge',
+    lun: 'Las Últimas Noticias',
   };
   return names[source];
 }
