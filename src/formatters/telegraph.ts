@@ -31,6 +31,7 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   lun: 'lun',
   nyt: 'nyt',
   wapo: 'wpo',
+  cnnchile: 'cnn',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -396,6 +397,7 @@ function getSourceName(source: Article['source']): string {
     lun: 'Las Últimas Noticias',
     nyt: 'The New York Times',
     wapo: 'The Washington Post',
+    cnnchile: 'CNN Chile',
   };
   return names[source];
 }

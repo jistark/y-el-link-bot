@@ -42,24 +42,35 @@ export async function extract(url: string): Promise<Article> {
   const authorMatch = html.match(/<meta\s+name="author"\s+content="([^"]+)"/i);
   const author = authorMatch?.[1]?.trim();
 
-  // Extraer cuerpo desde div.CUERPO
+  // Extraer cuerpo desde div.CUERPO hasta el cierre antes de mrf-premium
   let body = '';
-  const bodyMatch = html.match(/<div\s+class="CUERPO"[^>]*>([\s\S]*?)(?:<div class="prontus-card|<section class="mrf-premium|<\/div>\s*<section|<\/div>\s*<!--)/i);
+  const bodyMatch = html.match(/<div\s+class="CUERPO"[^>]*>([\s\S]*?)<\/div>\s*(?:<section class="mrf-premium|<div class="article-foot|$)/i);
   if (bodyMatch) {
     body = bodyMatch[1]
+      // Limpiar secciones de "TE PUEDE INTERESAR" (prontus-card)
+      .replace(/<p>\s*<div class="prontus-card-container">[\s\S]*?<\/div><\/div><\/p>/gi, '')
+      .replace(/<div class="prontus-card-container">[\s\S]*?<\/div>\s*<\/div>/gi, '')
       // Limpiar templates {{...}}
       .replace(/\{\{[^}]*\}\}/g, '')
       // Limpiar ads
+      .replace(/<div[^>]*class="[^"]*ad-df-slot[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
       .replace(/<div[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
       .replace(/<div[^>]*adUnit[^>]*>[\s\S]*?<\/div>/gi, '')
       // Limpiar secciones de artículos relacionados
       .replace(/<div[^>]*class="[^"]*relacionad[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
       .replace(/<div[^>]*class="[^"]*carousel[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
-      // Convertir h2 a h3 para Telegraph
-      .replace(/<h2>/gi, '<h3>')
+      // Convertir h2 a h3 para Telegraph (limpiar atributos style)
+      .replace(/<h2[^>]*>/gi, '<h3>')
       .replace(/<\/h2>/gi, '</h3>')
+      // Limpiar divs vacíos y con solo espacios
+      .replace(/<div[^>]*>[\s]*<\/div>/gi, '')
+      .replace(/<div[^>]*><span[^>]*>\s*<\/span><\/div>/gi, '')
+      // Limpiar spans de estilo
+      .replace(/<span[^>]*style="[^"]*font-family[^"]*"[^>]*>\s*<\/span>/gi, '')
       // Limpiar párrafos vacíos
       .replace(/<p>\s*<\/p>/gi, '')
+      // Limpiar pie de foto suelto (moverlo a figcaption después)
+      .replace(/<div[^>]*><span class="piefoto">([^<]+)<\/span><\/div>/gi, '<figcaption>$1</figcaption>')
       // Limpiar imágenes placeholder y de sistema
       .replace(/<img[^>]*src="[^"]*default[^"]*"[^>]*>/gi, '')
       .replace(/<img[^>]*src="[^"]*\/v1\/[^"]*"[^>]*>/gi, '')
@@ -71,6 +82,10 @@ export async function extract(url: string): Promise<Article> {
       .replace(/<li[^>]*class="[^"]*share[^"]*"[^>]*>[\s\S]*?<\/li>/gi, '')
       // Limpiar figures vacías
       .replace(/<figure>\s*<\/figure>/gi, '')
+      // Agrupar imagen con su caption en figure
+      .replace(/<p>\s*<img([^>]+)>\s*<\/p>\s*<figcaption>([^<]+)<\/figcaption>/gi, '<figure><img$1><figcaption>$2</figcaption></figure>')
+      // Convertir URLs relativas de imágenes a absolutas
+      .replace(/src="(\/noticias\/[^"]+)"/gi, 'src="https://www.df.cl$1"')
       .trim();
   }
 

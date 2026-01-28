@@ -1,4 +1,5 @@
 import type { Article } from '../types.js';
+import * as cnnchile from './cnnchile.js';
 import * as df from './df.js';
 import * as elmercurio from './elmercurio.js';
 import * as lasegunda from './lasegunda.js';
@@ -17,6 +18,7 @@ const URL_PATTERNS = {
   lun: /lun\.com/,
   nyt: /nytimes\.com/,
   wapo: /washingtonpost\.com/,
+  cnnchile: /cnnchile\.com/,
 } as const;
 
 export type Source = keyof typeof URL_PATTERNS;
@@ -57,6 +59,9 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'wapo':
       return wapo.extract(url);
+
+    case 'cnnchile':
+      return cnnchile.extract(url);
 
     default:
       throw new Error('URL no corresponde a un diario soportado');
