@@ -1,14 +1,20 @@
 import type { Article } from '../types.js';
 import * as biobio from './biobio.js';
+// bloomberg requires browser-level bypass
 import * as cnnchile from './cnnchile.js';
 import * as df from './df.js';
 import * as elmercurio from './elmercurio.js';
+import * as elpais from './elpais.js';
+import * as ft from './ft.js';
 import * as lasegunda from './lasegunda.js';
 import * as latercera from './latercera.js';
 import * as lun from './lun.js';
 import * as nyt from './nyt.js';
+// reuters requires browser-level bypass
+import * as theatlantic from './theatlantic.js';
 import * as theverge from './theverge.js';
 import * as wapo from './wapo.js';
+import * as wired from './wired.js';
 
 const URL_PATTERNS = {
   elmercurio: /(?:beta|digital|www)?\.?elmercurio\.com/,
@@ -21,6 +27,11 @@ const URL_PATTERNS = {
   wapo: /washingtonpost\.com/,
   cnnchile: /cnnchile\.com/,
   biobio: /biobiochile\.cl|pagina7\.cl/,
+  elpais: /elpais\.com/,
+  ft: /ft\.com/,
+  theatlantic: /theatlantic\.com/,
+  wired: /wired\.com/,
+  // bloomberg and reuters require browser-level bypass (cookies/JS blocking)
 } as const;
 
 export type Source = keyof typeof URL_PATTERNS;
@@ -67,6 +78,18 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'biobio':
       return biobio.extract(url);
+
+    case 'elpais':
+      return elpais.extract(url);
+
+    case 'ft':
+      return ft.extract(url);
+
+    case 'theatlantic':
+      return theatlantic.extract(url);
+
+    case 'wired':
+      return wired.extract(url);
 
     default:
       throw new Error('URL no corresponde a un diario soportado');

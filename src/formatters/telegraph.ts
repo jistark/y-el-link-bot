@@ -33,6 +33,10 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   wapo: 'wpo',
   cnnchile: 'cnn',
   biobio: 'rbb',
+  elpais: 'ep',
+  ft: 'ft',
+  theatlantic: 'atl',
+  wired: 'wrd',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -400,6 +404,10 @@ function getSourceName(source: Article['source']): string {
     wapo: 'The Washington Post',
     cnnchile: 'CNN Chile',
     biobio: 'BioBioChile',
+    elpais: 'El País',
+    ft: 'Financial Times',
+    theatlantic: 'The Atlantic',
+    wired: 'Wired',
   };
   return names[source];
 }
