@@ -124,7 +124,9 @@ function extractLunContent(html: string): ExtractedContent {
   const imagenes = html.matchAll(/src='(https:\/\/images\.lun\.com\/LunServerContents\/Noticias[^']+)'/g);
   const imageSet = new Set<string>();
   for (const imgMatch of imagenes) {
-    imageSet.add(imgMatch[1]);
+    // Encode spaces in URL (e.g., "Noticias Imagenes" -> "Noticias%20Imagenes")
+    const encodedUrl = imgMatch[1].replace(/ /g, '%20');
+    imageSet.add(encodedUrl);
   }
   result.imagenes = Array.from(imageSet);
 
