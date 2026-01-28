@@ -29,6 +29,8 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   df: 'df',
   theverge: 'vrg',
   lun: 'lun',
+  nyt: 'nyt',
+  wapo: 'wpo',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -392,6 +394,8 @@ function getSourceName(source: Article['source']): string {
     df: 'Diario Financiero',
     theverge: 'The Verge',
     lun: 'Las Últimas Noticias',
+    nyt: 'The New York Times',
+    wapo: 'The Washington Post',
   };
   return names[source];
 }

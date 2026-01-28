@@ -4,7 +4,9 @@ import * as elmercurio from './elmercurio.js';
 import * as lasegunda from './lasegunda.js';
 import * as latercera from './latercera.js';
 import * as lun from './lun.js';
+import * as nyt from './nyt.js';
 import * as theverge from './theverge.js';
+import * as wapo from './wapo.js';
 
 const URL_PATTERNS = {
   elmercurio: /(?:beta|digital|www)?\.?elmercurio\.com/,
@@ -13,6 +15,8 @@ const URL_PATTERNS = {
   df: /df\.cl/,
   theverge: /theverge\.com/,
   lun: /lun\.com/,
+  nyt: /nytimes\.com/,
+  wapo: /washingtonpost\.com/,
 } as const;
 
 export type Source = keyof typeof URL_PATTERNS;
@@ -47,6 +51,12 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'lun':
       return lun.extract(url);
+
+    case 'nyt':
+      return nyt.extract(url);
+
+    case 'wapo':
+      return wapo.extract(url);
 
     default:
       throw new Error('URL no corresponde a un diario soportado');
