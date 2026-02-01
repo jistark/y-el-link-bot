@@ -37,6 +37,9 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   ft: 'ft',
   theatlantic: 'atl',
   wired: 'wrd',
+  '404media': '404m',
+  substack: 'sub',
+  beehiiv: 'bhv',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -408,6 +411,9 @@ function getSourceName(source: Article['source']): string {
     ft: 'Financial Times',
     theatlantic: 'The Atlantic',
     wired: 'Wired',
+    '404media': '404 Media',
+    substack: 'Substack',
+    beehiiv: 'Beehiiv',
   };
   return names[source];
 }

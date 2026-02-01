@@ -58,15 +58,15 @@ export async function extract(url: string): Promise<Article> {
       contentHtml = contentMatch[1];
     }
   } else {
-    // BioBioChile: buscar en banners-contenido-nota (con o sin número)
-    // Patrón 1: con número (noticias antiguas)
+    // BioBioChile: buscar en banners-contenido-nota, terminar en contenedor-correcciones
+    // El lazy match anterior cortaba en el primer </div></div> (ej: lee-tambien-bbcl)
     let contentMatch = html.match(
-      /<div class="banners-contenido-nota-\d+">([\s\S]*?)\n\s*<\/div>\s*\n\s*<\/div>/
+      /<div class="banners-contenido-nota-\d+">([\s\S]+?)<div class="contenedor-correcciones/
     );
     // Patrón 2: sin número (noticias nuevas - dopamina, etc)
     if (!contentMatch) {
       contentMatch = html.match(
-        /<div class="contenido-nota banners-contenido-nota">([\s\S]*?)<\/div>\s*<\/div>\s*<div class="contenedor-correcciones/
+        /<div class="contenido-nota banners-contenido-nota">([\s\S]+?)<div class="contenedor-correcciones/
       );
     }
     if (contentMatch) {

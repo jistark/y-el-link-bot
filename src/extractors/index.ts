@@ -1,4 +1,6 @@
 import type { Article } from '../types.js';
+import * as fourzerofourmedia from './404media.js';
+import * as beehiiv from './beehiiv.js';
 import * as biobio from './biobio.js';
 // bloomberg requires browser-level bypass
 import * as cnnchile from './cnnchile.js';
@@ -11,6 +13,7 @@ import * as latercera from './latercera.js';
 import * as lun from './lun.js';
 import * as nyt from './nyt.js';
 // reuters requires browser-level bypass
+import * as substack from './substack.js';
 import * as theatlantic from './theatlantic.js';
 import * as theverge from './theverge.js';
 import * as wapo from './wapo.js';
@@ -31,6 +34,9 @@ const URL_PATTERNS = {
   ft: /ft\.com/,
   theatlantic: /theatlantic\.com/,
   wired: /wired\.com/,
+  '404media': /404media\.co/,
+  substack: /\.substack\.com|jasmi\.news|sources\.news|elcontenido\.substack\.com/,
+  beehiiv: /\.beehiiv\.com|aliciakennedy\.news|status\.news|theresanaiforthat\.com/,
   // bloomberg and reuters require browser-level bypass (cookies/JS blocking)
 } as const;
 
@@ -90,6 +96,15 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'wired':
       return wired.extract(url);
+
+    case '404media':
+      return fourzerofourmedia.extract(url);
+
+    case 'substack':
+      return substack.extract(url);
+
+    case 'beehiiv':
+      return beehiiv.extract(url);
 
     default:
       throw new Error('URL no corresponde a un diario soportado');
