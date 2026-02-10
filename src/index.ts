@@ -52,6 +52,15 @@ if (WEBHOOK_URL) {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
+  // Verificar si hay webhook activo antes de iniciar polling
+  const webhookInfo = await bot.api.getWebhookInfo();
+  if (webhookInfo.url) {
+    console.warn(`⚠️  Webhook activo detectado: ${webhookInfo.url}`);
+    console.warn('   Iniciar polling desactivará el webhook de producción.');
+    console.warn('   Presiona Ctrl+C en 3 segundos para cancelar...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+
   console.log('Bot iniciando en polling mode...');
   bot.start();
 }
