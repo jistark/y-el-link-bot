@@ -65,36 +65,24 @@ function findSigno(input: string): SignoInfo | null {
   return null;
 }
 
-function buildUrl(): { url: string; dateLabel: string } {
-  // Obtener fecha en zona horaria de Chile
+// URL estable que siempre redirige al horóscopo más reciente
+const HOROSCOPO_URL = 'https://primedigital.cl/horoscopo/';
+
+function extractDateFromSlug(finalUrl: string): string {
+  // Extraer fecha del slug: horoscopo-lunes-23-de-marzo-2026
+  const match = finalUrl.match(/horoscopo-(\w+)-(\d+)-de-(\w+)-(\d+)/);
+  if (match) {
+    const [, dayName, day, month, year] = match;
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    return `${cap(dayName)} ${day} de ${cap(month)} ${year}`;
+  }
+  // Fallback: fecha de hoy en Chile
   const now = new Date();
   const chileNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
-
-  // Fecha de publicación = ayer
-  const pubDate = new Date(chileNow);
-  pubDate.setDate(chileNow.getDate() - 1);
-
-  // Fecha del horóscopo = mañana
-  const forDate = new Date(chileNow);
-  forDate.setDate(chileNow.getDate() + 1);
-
-  const y = pubDate.getFullYear();
-  const m = String(pubDate.getMonth() + 1).padStart(2, '0');
-  const d = String(pubDate.getDate()).padStart(2, '0');
-
-  const dayName = DAYS[forDate.getDay()];
-  const forDay = forDate.getDate();
-  const monthName = MONTHS[forDate.getMonth()];
-  const forYear = forDate.getFullYear();
-
-  const url = `https://primedigital.cl/${y}/${m}/${d}/horoscopo-${dayName}-${forDay}-de-${monthName}-${forYear}/`;
-
-  // Label capitalizado
-  const dayNameCap = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-  const monthNameCap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-  const dateLabel = `${dayNameCap} ${forDay} de ${monthNameCap} ${forYear}`;
-
-  return { url, dateLabel };
+  const dayName = DAYS[chileNow.getDay()];
+  const monthName = MONTHS[chileNow.getMonth()];
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  return `${cap(dayName)} ${chileNow.getDate()} de ${cap(monthName)} ${chileNow.getFullYear()}`;
 }
 
 function parseHoroscopo(html: string, dateLabel: string): HoroscopoData {
@@ -170,8 +158,6 @@ function extractCategory(block: string, category: string): string {
 }
 
 async function fetchAndParse(): Promise<HoroscopoData> {
-  const { url, dateLabel } = buildUrl();
-
   // Revisar cache (usar fecha Chile, no UTC)
   const chileNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' }));
   const today = `${chileNow.getFullYear()}-${String(chileNow.getMonth() + 1).padStart(2, '0')}-${String(chileNow.getDate()).padStart(2, '0')}`;
@@ -180,14 +166,18 @@ async function fetchAndParse(): Promise<HoroscopoData> {
     return cached.data;
   }
 
-  const response = await fetch(url, {
+  // Seguir redirect de /horoscopo/ al post más reciente
+  const response = await fetch(HOROSCOPO_URL, {
     signal: AbortSignal.timeout(15000),
+    redirect: 'follow',
   });
 
   if (!response.ok) {
     throw new Error(`primedigital.cl respondió ${response.status}`);
   }
 
+  const finalUrl = response.url; // URL después del redirect
+  const dateLabel = extractDateFromSlug(finalUrl);
   const html = await response.text();
   const data = parseHoroscopo(html, dateLabel);
 

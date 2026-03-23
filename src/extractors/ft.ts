@@ -1,8 +1,9 @@
 import type { Article } from '../types.js';
 
-// Financial Times uses special Outbrain User-Agent (not Googlebot!)
+// Financial Times uses special Outbrain User-Agent + Google Referer to bypass paywall
 const FT_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Java) outbrain',
+  'Referer': 'https://www.google.com/',
 };
 
 interface JsonLdArticle {
@@ -72,13 +73,22 @@ function extractBodyFromHtml(html: string): string | null {
   return paragraphs.map((p) => `<p>${p}</p>`).join('\n');
 }
 
-export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: FT_HEADERS, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) {
+async function fetchWithRetry(url: string, maxRetries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, { headers: FT_HEADERS, signal: AbortSignal.timeout(15000) });
+    if (response.ok) return response.text();
+    // Cloudflare intermittently returns 403 — retry with backoff
+    if (response.status === 403 && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+      continue;
+    }
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
+  throw new Error('Error al obtener artículo: reintentos agotados');
+}
 
-  const html = await response.text();
+export async function extract(url: string): Promise<Article> {
+  const html = await fetchWithRetry(url);
 
   // Extract JSON-LD
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;

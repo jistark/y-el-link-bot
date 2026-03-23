@@ -172,6 +172,21 @@ const DOLLAR_SOURCES = [
   { id: 'santander', name: 'Santander', aliases: [] },
 ] as const;
 
+// Fallback: API mindicador.cl (dólar observado oficial del Banco Central)
+interface MindicadorResponse {
+  serie: { fecha: string; valor: number }[];
+}
+
+async function fetchDollarFallback(): Promise<number> {
+  const response = await fetch('https://mindicador.cl/api/dolar', {
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new Error(`mindicador.cl respondió ${response.status}`);
+  const data = (await response.json()) as MindicadorResponse;
+  if (!data.serie?.length) throw new Error('Sin datos en mindicador.cl');
+  return data.serie[0].valor;
+}
+
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 interface DollarQuote {
@@ -363,14 +378,36 @@ export function createBot(token: string): Bot {
       ].join('\n');
 
       await ctx.reply(message, { parse_mode: 'HTML' });
-    } catch (error) {
+    } catch (primaryError) {
       console.error(JSON.stringify({
         event: 'dollar_error',
         chatId: ctx.chat.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: primaryError instanceof Error ? primaryError.message : String(primaryError),
         timestamp: new Date().toISOString(),
       }));
-      await ctx.reply('❌ No pude obtener el precio del dólar.');
+
+      // Fallback: dólar observado desde mindicador.cl
+      try {
+        const valor = await fetchDollarFallback();
+        const time = getChileTime();
+        const message = [
+          `💵 <b>DÓLAR OBSERVADO</b>: ${formatCLP(valor)}`,
+          '',
+          `<i>Valor oficial Banco Central (${time} hrs)</i>`,
+          '<i>Detalle por banco no disponible</i>',
+          '',
+          'Fuente: <a href="https://mindicador.cl">mindicador.cl</a>',
+        ].join('\n');
+        await ctx.reply(message, { parse_mode: 'HTML' });
+      } catch (fallbackError) {
+        console.error(JSON.stringify({
+          event: 'dollar_fallback_error',
+          chatId: ctx.chat.id,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+          timestamp: new Date().toISOString(),
+        }));
+        await ctx.reply('❌ No pude obtener el precio del dólar.');
+      }
     }
   });
 
