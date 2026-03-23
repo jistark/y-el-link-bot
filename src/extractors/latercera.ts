@@ -140,6 +140,7 @@ function parseContentElements(elements: ContentElement[]): string {
 export async function extract(url: string): Promise<Article> {
   const response = await fetch(url, {
     headers: { 'User-Agent': GOOGLEBOT_UA },
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {

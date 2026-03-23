@@ -12,5 +12,6 @@
     "declaration": true,
     "types": ["bun"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/extractors/_deprecated"]
 }

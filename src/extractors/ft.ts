@@ -73,7 +73,7 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: FT_HEADERS });
+  const response = await fetch(url, { headers: FT_HEADERS, signal: AbortSignal.timeout(15000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }

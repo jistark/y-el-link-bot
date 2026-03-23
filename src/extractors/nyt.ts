@@ -4,6 +4,10 @@ const NYT_HEADERS = {
   'User-Agent': 'Twitterbot/1.0',
 };
 
+const GOOGLEBOT_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+};
+
 interface JsonLdArticle {
   '@type'?: string;
   headline?: string;
@@ -74,7 +78,13 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: NYT_HEADERS });
+  let response = await fetch(url, { headers: NYT_HEADERS, signal: AbortSignal.timeout(15000) });
+
+  // Fallback a Googlebot UA si Twitterbot es bloqueado
+  if (response.status === 403) {
+    response = await fetch(url, { headers: GOOGLEBOT_HEADERS, signal: AbortSignal.timeout(15000) });
+  }
+
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }

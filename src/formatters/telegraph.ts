@@ -38,8 +38,6 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   theatlantic: 'atl',
   wired: 'wrd',
   '404media': '404m',
-  substack: 'sub',
-  beehiiv: 'bhv',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -198,8 +196,28 @@ function createEmbedNode(url: string, provider?: string): TelegraphNode | null {
   return null;
 }
 
+// Tags HTML permitidos - todos los demás se eliminan preservando su texto
+const ALLOWED_TAGS = new Set([
+  'p', 'b', 'strong', 'i', 'em', 'a', 'mark', 'u', 's',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'img', 'figure', 'figcaption', 'iframe',
+  'br', 'div', 'span', 'section', 'article',
+  'blockquote', 'ul', 'ol', 'li',
+  'table', 'tr', 'td', 'th', 'thead', 'tbody',
+  'video', 'source', 'audio',
+]);
+
+function stripUnknownTags(html: string): string {
+  return html.replace(/<\/?([a-zA-Z][a-zA-Z0-9-]*)[^>]*>/g, (match, tagName) => {
+    return ALLOWED_TAGS.has(tagName.toLowerCase()) ? match : '';
+  });
+}
+
 function htmlToNodes(html: string): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
+
+  // Paso 0: Eliminar tags HTML desconocidos (ej: <capitals>, <subhead>)
+  html = stripUnknownTags(html);
 
   // Paso 1: Normalizar saltos - <div>, </div>, <br> → \n
   let normalized = html
@@ -347,7 +365,7 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
   const path = createData.result.path;
 
   // Paso 2: Editar página para poner el título real
-  await fetch(`${API_URL}/editPage`, {
+  const editResponse = await fetch(`${API_URL}/editPage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -360,6 +378,16 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
       return_content: false,
     }),
   });
+
+  const editData: CreatePageResponse = await editResponse.json();
+  if (!editData.ok) {
+    console.error(JSON.stringify({
+      event: 'telegraph_edit_error',
+      path,
+      error: editData.error,
+      timestamp: new Date().toISOString(),
+    }));
+  }
 
   return {
     url: createData.result.url,
@@ -412,8 +440,6 @@ function getSourceName(source: Article['source']): string {
     theatlantic: 'The Atlantic',
     wired: 'Wired',
     '404media': '404 Media',
-    substack: 'Substack',
-    beehiiv: 'Beehiiv',
   };
   return names[source];
 }

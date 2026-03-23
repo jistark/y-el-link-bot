@@ -2,6 +2,7 @@ import { createBot } from './bot.js';
 import { webhookCallback } from 'grammy';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const webhookSecret = process.env.WEBHOOK_SECRET || crypto.randomUUID();
 
 if (!token) {
   console.error('Error: TELEGRAM_BOT_TOKEN no está configurado');
@@ -9,6 +10,14 @@ if (!token) {
 }
 
 const bot = createBot(token);
+
+// Registrar comandos en el menú de Telegram
+await bot.api.setMyCommands([
+  { command: 'rz', description: 'Rating de canales de TV (Zapping)' },
+  { command: 'dolar', description: 'Precio del dólar en Chile' },
+  { command: 'tiayoli', description: 'Horóscopo de Yolanda Sultana' },
+  { command: 'donar', description: 'Apoyar la mantención del bot' },
+]);
 
 // Modo: webhook (producción) o polling (desarrollo)
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
@@ -28,8 +37,11 @@ if (WEBHOOK_URL) {
         return new Response('OK', { status: 200 });
       }
 
-      // Webhook de Telegram
+      // Webhook de Telegram (verificar secret token)
       if (req.method === 'POST' && url.pathname === '/webhook') {
+        if (req.headers.get('x-telegram-bot-api-secret-token') !== webhookSecret) {
+          return new Response('Forbidden', { status: 403 });
+        }
         return handleUpdate(req);
       }
 
@@ -37,8 +49,8 @@ if (WEBHOOK_URL) {
     },
   });
 
-  // Configurar webhook en Telegram
-  await bot.api.setWebhook(`${WEBHOOK_URL}/webhook`);
+  // Configurar webhook en Telegram (con secret token para validar origen)
+  await bot.api.setWebhook(`${WEBHOOK_URL}/webhook`, { secret_token: webhookSecret });
   console.log(`Bot corriendo en webhook mode (puerto ${PORT})`);
 
 } else {

@@ -1,9 +1,12 @@
 import { Bot, InlineKeyboard, Context } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
+import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 
-// Tiempo de gracia para undo (en ms)
+// Tiempo de gracia para undo antes de procesar (en ms)
 const UNDO_GRACE_PERIOD = 5000;
+// Tiempo total que el autor puede borrar después de publicar (en ms)
+const DELETE_GRACE_PERIOD = 15000;
 
 // Cache de artículos procesados
 const cache = new Map<string, { result: CreatePageResult; expires: number }>();
@@ -25,21 +28,53 @@ interface PendingRequest {
 
 const pending = new Map<string, PendingRequest>();
 
-// Páginas creadas (para poder borrarlas)
-interface CreatedPage {
-  path: string;
-  url: string;
-  originalUrl: string;
-  botMessageId: number;
-  chatId: number;
-  userId: number; // Usuario que publicó el artículo
+// Limpieza periódica del cache (cada hora)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of cache) {
+    if (value.expires < now) cache.delete(key);
+  }
+}, 60 * 60 * 1000);
+
+// Rate limiter por usuario (máx 5 artículos por minuto)
+const RATE_LIMIT = 5;
+const RATE_WINDOW = 60 * 1000; // 1 minuto
+const userRequests = new Map<number, number[]>();
+
+function isRateLimited(userId: number): boolean {
+  const now = Date.now();
+  const timestamps = userRequests.get(userId) || [];
+  const recent = timestamps.filter(t => now - t < RATE_WINDOW);
+  if (recent.length >= RATE_LIMIT) return true;
+  recent.push(now);
+  userRequests.set(userId, recent);
+  return false;
 }
 
-const createdPages = new Map<string, CreatedPage>();
+// Limpiar rate limiter cada 5 minutos
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, timestamps] of userRequests) {
+    const recent = timestamps.filter(t => now - t < RATE_WINDOW);
+    if (recent.length === 0) userRequests.delete(userId);
+    else userRequests.set(userId, recent);
+  }
+}, 5 * 60 * 1000);
 
 function extractUrls(text: string): string[] {
   const urlRegex = /https?:\/\/[^\s<>"\]]+/gi;
-  return text.match(urlRegex) || [];
+  return (text.match(urlRegex) || []).map(url => url.replace(/[.,;:!?)]+$/, ''));
+}
+
+// Extraer URL canónica de URLs AMP
+function deAmpUrl(url: string): string {
+  // cdn.ampproject.org: https://www-example-com.cdn.ampproject.org/c/s/www.example.com/path
+  const ampMatch = url.match(/cdn\.ampproject\.org\/[^/]*\/s\/(.+)/);
+  if (ampMatch) return `https://${ampMatch[1]}`;
+  // Google AMP cache: https://www.google.com/amp/s/www.example.com/path
+  const googleAmpMatch = url.match(/google\.com\/amp\/s\/(.+)/);
+  if (googleAmpMatch) return `https://${googleAmpMatch[1]}`;
+  return url;
 }
 
 function getUserMention(ctx: Context): string {
@@ -68,12 +103,22 @@ function createUndoKeyboard(): InlineKeyboard {
     .text('⏪ Cancelar', 'undo');
 }
 
-function createActionKeyboard(pageId: string, originalUrl: string): InlineKeyboard {
+function createActionKeyboard(telegraphPath: string, userId: number, originalUrl: string): InlineKeyboard {
   const archiveUrl = `https://archive.ph/?q=${encodeURIComponent(originalUrl)}`;
   const twitterUrl = `https://twitter.com/search?q=${encodeURIComponent(originalUrl)}`;
 
+  // Embeber path, userId y timestamp en callback data (sobrevive reinicios del bot)
+  // Formato: "del:path:userId:timestamp" - timestamp en base36 para ahorrar bytes
+  const ts = Math.floor(Date.now() / 1000).toString(36);
+  const deleteData = `del:${telegraphPath}:${userId}:${ts}`;
+
+  // Telegram limita callback_data a 64 bytes - fallback sin timestamp si excede
+  const callbackData = deleteData.length <= 64
+    ? deleteData
+    : `del:${telegraphPath}:${userId}:0`;
+
   return new InlineKeyboard()
-    .text('🗑️ Borrar', `delete:${pageId}`)
+    .text('🗑️ Borrar', callbackData)
     .url('📦 Archive', archiveUrl)
     .url('🐦 Twitter', twitterUrl);
 }
@@ -115,17 +160,16 @@ function getChileTime(): string {
   return `${hours}:${minutes}`;
 }
 
-// Fuentes de precio del dólar
+// Fuentes de precio del dólar (match con sources en dolar.cl)
 const DOLLAR_SOURCES = [
-  { id: 'fintual', name: 'Fintual' },
-  { id: 'bci', name: 'BCI' },
-  { id: 'mach', name: 'MACH' },
-  { id: 'falabella', name: 'Falabella' },
-  { id: 'bancochile', name: 'Banco de Chile' },
-  { id: 'estado', name: 'BancoEstado' },
-  { id: 'itau', name: 'Itaú' },
-  { id: 'santander', name: 'Santander' },
-  { id: 'global66', name: 'Global66' },
+  { id: 'btg', name: 'BTG Pactual', aliases: ['btg pactual'] },
+  { id: 'fintual', name: 'Fintual', aliases: [] },
+  { id: 'bci', name: 'BCI', aliases: [] },
+  { id: 'falabella', name: 'Banco Falabella', aliases: ['cmr', 'falabella'] },
+  { id: 'bancochile', name: 'Banco de Chile', aliases: ['bancochile', 'banco chile', 'bch'] },
+  { id: 'itau', name: 'Itaú', aliases: ['itau'] },
+  { id: 'estado', name: 'BancoEstado', aliases: ['banco estado', 'bech'] },
+  { id: 'santander', name: 'Santander', aliases: [] },
 ] as const;
 
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 horas
@@ -151,36 +195,74 @@ async function fetchDollarPrices(): Promise<{
   live: LiveQuote | null;
   quotes: { source: typeof DOLLAR_SOURCES[number]; quote: DollarQuote | null }[];
 }> {
-  // Construir batch tRPC request: index 0 = liveQuote, 1+ = lastQuote por fuente
-  const input: Record<string, { json: Record<string, unknown> }> = {
-    '0': { json: { range: '1d' } },
-  };
-  DOLLAR_SOURCES.forEach((s, i) => {
-    input[String(i + 1)] = { json: { source: s.id } };
-  });
-
-  const procedures = [
-    'dolar.liveQuote',
-    ...DOLLAR_SOURCES.map(() => 'dolar.lastQuote'),
-  ].join(',');
-
-  const url = `https://dolar.cl/api/trpc/${procedures}?batch=1&input=${encodeURIComponent(JSON.stringify(input))}`;
-
-  const response = await fetch(url, {
-    headers: { 'Accept': 'application/json' },
+  // Fetch HTML de dolar.cl - los precios están embebidos como React Query dehydrated state
+  const response = await fetch('https://dolar.cl/', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+    },
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
     throw new Error(`dolar.cl respondió ${response.status}`);
   }
 
-  const data = await response.json() as { result?: { data?: { json?: unknown } } }[];
+  const html = await response.text();
 
-  const live = (data[0]?.result?.data?.json as LiveQuote) || null;
+  // Extraer live quote del dehydrated state
+  let live: LiveQuote | null = null;
+  const liveMatch = html.match(/"change":([-\d.]+),"close":([\d.]+),"datetime":"([^"]+)","high":([\d.]+),"low":([\d.]+),"open":([\d.]+),"percentChange":([-\d.]+)/);
+  if (liveMatch) {
+    live = {
+      change: parseFloat(liveMatch[1]),
+      close: parseFloat(liveMatch[2]),
+      datetime: liveMatch[3],
+      high: parseFloat(liveMatch[4]),
+      low: parseFloat(liveMatch[5]),
+      open: parseFloat(liveMatch[6]),
+      percentChange: parseFloat(liveMatch[7]),
+    };
+  }
 
-  const quotes = DOLLAR_SOURCES.map((source, i) => {
-    const quote = (data[i + 1]?.result?.data?.json as DollarQuote) || null;
-    return { source, quote };
+  // Extraer quotes del dehydrated state (React Query)
+  // Los sources y data blocks aparecen en el mismo orden en el HTML
+  const sourceOrder: string[] = [];
+  const sourcePattern = /lastQuote\|?\{\\"source\\":\\"(\w+)\\"\}/g;
+  let sm: RegExpExecArray | null;
+  while ((sm = sourcePattern.exec(html)) !== null) {
+    sourceOrder.push(sm[1]);
+  }
+
+  const dataBlocks: { buy: number; sell: number; time: number }[] = [];
+  const dataPattern = /"buy":(\d+\.?\d*),"sell":(\d+\.?\d*),"time":(\d+)/g;
+  let dm: RegExpExecArray | null;
+  while ((dm = dataPattern.exec(html)) !== null) {
+    dataBlocks.push({ buy: parseFloat(dm[1]), sell: parseFloat(dm[2]), time: parseInt(dm[3]) });
+  }
+
+  // Mapear sources a data por posición
+  const sourceDataMap = new Map<string, { buy: number; sell: number; time: number }>();
+  for (let i = 0; i < Math.min(sourceOrder.length, dataBlocks.length); i++) {
+    sourceDataMap.set(sourceOrder[i], dataBlocks[i]);
+  }
+
+  const quotes = DOLLAR_SOURCES.map(source => {
+    const data = sourceDataMap.get(source.id);
+    if (data) {
+      return {
+        source,
+        quote: {
+          buy: data.buy,
+          sell: data.sell,
+          time: new Date(data.time).toISOString(),
+          fee: null,
+        } as DollarQuote,
+      };
+    }
+    return { source, quote: null };
   });
 
   return { live, quotes };
@@ -220,66 +302,125 @@ export function createBot(token: string): Bot {
   });
 
   // Comando /dolar (también responde a /usd)
+  // Sin argumento: muestra todas las fuentes
+  // Con argumento: filtra por nombre de fuente (ej: /dolar bancoestado)
   bot.command(['dolar', 'usd'], async (ctx) => {
     console.log('Comando dolar recibido');
 
     try {
       const { live, quotes } = await fetchDollarPrices();
       const time = getChileTime();
-      const now = Date.now();
+      const filter = ctx.match?.trim().toLowerCase();
 
-      // Línea principal con precio actual
-      let header = '💵 <b>Precio del Dólar</b>';
+      // Línea principal: DÓLAR AHORA
+      let header = '💵 <b>DÓLAR AHORA</b>';
       if (live) {
         const arrow = live.change >= 0 ? '📈' : '📉';
         const sign = live.change >= 0 ? '+' : '';
         const pct = (live.percentChange * 100).toFixed(2).replace('.', ',');
-        header += ` (${formatCLP(live.close)})`;
+        header += `: ${formatCLP(live.close)}`;
         header += `\n${arrow} ${sign}${pct}% · Rango: ${formatCLP(live.low)} – ${formatCLP(live.high)}`;
       }
 
-      // Líneas por fuente, ordenadas por menor precio de compra
-      const validQuotes = quotes
-        .filter(({ source, quote }) => {
-          if (!quote) return false;
-          // Excluir Santander si está stale
-          if (source.id === 'santander') {
-            const quoteAge = now - new Date(quote.time).getTime();
-            return quoteAge < STALE_THRESHOLD_MS;
-          }
-          return true;
-        })
-        .sort((a, b) => (a.quote!.buy) - (b.quote!.buy));
+      // Filtrar por fuente si se especificó
+      let validQuotes = quotes.filter(({ quote }) => !!quote);
+
+      if (filter) {
+        const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const filterNorm = normalize(filter);
+        const filtered = validQuotes.filter(({ source }) =>
+          normalize(source.id).includes(filterNorm) ||
+          normalize(source.name).includes(filterNorm) ||
+          source.aliases.some(a => normalize(a).includes(filterNorm) || filterNorm.includes(normalize(a)))
+        );
+
+        if (filtered.length === 0) {
+          const available = DOLLAR_SOURCES.map(s => s.name).join(', ');
+          await ctx.reply(
+            `❌ No encontré "<b>${filter}</b>"\n\n🏦 Fuentes disponibles: ${available}`,
+            { parse_mode: 'HTML' }
+          );
+          return;
+        }
+        validQuotes = filtered;
+      }
+
+      validQuotes.sort((a, b) => (a.quote!.buy) - (b.quote!.buy));
 
       const lines = validQuotes.map(({ source, quote }) => {
         const buy = formatCLP(quote!.buy);
         const sell = quote!.sell != null ? formatCLP(quote!.sell) : '—';
-        return `<b>${source.name}</b>: ${buy} · ${sell}`;
+        return `${source.name}: ${buy} · ${sell}`;
       });
 
       const message = [
         header,
         '',
-        `🏦 <b>Compra · Venta</b> (${time} hrs)`,
+        `🏦 Compra · Venta (${time} hrs)`,
         ...lines,
         '',
-        '<i>Fuente: dolar.cl</i>',
+        'Fuente: <a href="https://dolar.cl">dolar.cl</a>',
       ].join('\n');
 
       await ctx.reply(message, { parse_mode: 'HTML' });
     } catch (error) {
-      console.error('Error obteniendo precio del dólar:', error);
+      console.error(JSON.stringify({
+        event: 'dollar_error',
+        chatId: ctx.chat.id,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }));
       await ctx.reply('❌ No pude obtener el precio del dólar.');
+    }
+  });
+
+  // Comando /donar (también responde a /donate)
+  bot.command(['donar', 'donate'], async (ctx) => {
+    const keyboard = new InlineKeyboard()
+      .url('🌭 Donar', 'https://donate.stripe.com/eVq8wQ4XtbW5clbep0cfK01');
+
+    await ctx.reply(
+      '🌭 Gracias por apoyar a la DVJ. Apóyanos con un tocomple.',
+      { reply_markup: keyboard }
+    );
+  });
+
+  // Comando /tiayoli - Horóscopo de Yolanda Sultana
+  bot.command(['tiayoli', 'horoscopo'], async (ctx) => {
+    const signo = ctx.match?.trim();
+    if (!signo) {
+      await ctx.reply(
+        `🔮 <b>Horóscopo de Yolanda Sultana</b>\n\nUsa: /tiayoli &lt;signo&gt;\n\n${getSignosList()}`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    try {
+      const result = await getHoroscopo(signo);
+      await ctx.reply(result, { parse_mode: 'HTML' });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'horoscopo_error',
+        signo,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }));
+      await ctx.reply('❌ No pude obtener el horóscopo. El sitio puede estar caído.');
     }
   });
 
   // Handler para mensajes con URLs
   bot.on('message:text', async (ctx) => {
-    const urls = extractUrls(ctx.message.text);
+    const rawUrls = extractUrls(ctx.message.text);
 
-    for (const url of urls) {
+    for (const rawUrl of rawUrls) {
+      const url = deAmpUrl(rawUrl);
       const source = detectSource(url);
       if (!source) continue;
+
+      // Rate limiting por usuario (skip si no hay userId)
+      if (ctx.from?.id && isRateLimited(ctx.from.id)) continue;
 
       const pendingId = `${ctx.chat.id}:${ctx.message.message_id}:${url}`;
 
@@ -290,9 +431,10 @@ export function createBot(token: string): Bot {
         continue;
       }
 
-      // Enviar mensaje de "procesando" con botón de undo
+      // Enviar mensaje de "procesando" con botón de undo (reply al mensaje original)
       const botMessage = await ctx.reply('⏳ Procesando artículo...', {
         reply_markup: createUndoKeyboard(),
+        reply_parameters: { message_id: ctx.message.message_id },
       });
 
       // Configurar timeout para procesar después del período de gracia
@@ -315,12 +457,23 @@ export function createBot(token: string): Bot {
           await processAndReply(ctx, url, result, req);
 
         } catch (error) {
-          console.error(`Error procesando ${url}:`, error);
-          await ctx.api.editMessageText(
-            ctx.chat.id,
-            botMessage.message_id,
-            '❌ No pude acceder al artículo.'
-          );
+          console.error(JSON.stringify({
+            event: 'extraction_error',
+            url,
+            source: detectSource(url),
+            chatId: ctx.chat.id,
+            error: error instanceof Error ? error.message : String(error),
+            timestamp: new Date().toISOString(),
+          }));
+          try {
+            await ctx.api.editMessageText(
+              ctx.chat.id,
+              botMessage.message_id,
+              '❌ No pude acceder al artículo.'
+            );
+          } catch {
+            // Mensaje ya borrado o inaccesible
+          }
         }
 
         pending.delete(pendingId);
@@ -346,16 +499,29 @@ export function createBot(token: string): Bot {
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
 
-    // Undo
+    // Undo (autor o admin pueden cancelar)
     if (data === 'undo') {
-      // Buscar el pending request asociado
       for (const [id, req] of pending.entries()) {
         if (req.botMessageId === ctx.callbackQuery.message?.message_id) {
+          const isOwner = req.userId === ctx.from?.id;
+          let isAdmin = false;
+
+          if (!isOwner && ctx.chat && ctx.from?.id) {
+            try {
+              const member = await ctx.api.getChatMember(ctx.chat.id, ctx.from.id);
+              isAdmin = ['creator', 'administrator'].includes(member.status);
+            } catch {}
+          }
+
+          if (!isOwner && !isAdmin) {
+            await ctx.answerCallbackQuery({ text: 'Solo el autor o admins pueden cancelar' });
+            return;
+          }
+
           req.cancelled = true;
           clearTimeout(req.timeoutId);
           pending.delete(id);
 
-          // Borrar el mensaje del bot
           try {
             await ctx.deleteMessage();
           } catch {
@@ -370,49 +536,81 @@ export function createBot(token: string): Bot {
       return;
     }
 
-    // Delete
-    if (data.startsWith('delete:')) {
-      const pageId = data.slice(7);
-      const page = createdPages.get(pageId);
+    // Delete - formato: "del:telegraphPath:ownerId:timestamp(base36)"
+    if (data.startsWith('del:')) {
+      const parts = data.slice(4).split(':');
+      // Último = timestamp, penúltimo = userId, resto = path
+      const createdAtB36 = parts.pop()!;
+      const ownerIdStr = parts.pop()!;
+      const telegraphPath = parts.join(':');
+      const ownerId = parseInt(ownerIdStr, 10);
+      const createdAt = parseInt(createdAtB36, 36) * 1000;
+      const userId = ctx.from?.id;
 
-      if (page) {
-        const userId = ctx.from?.id;
-
-        // Verificar que quien borra es quien publicó o es admin/mod
-        let canDelete = userId === page.userId;
-
-        if (!canDelete && ctx.chat && userId) {
-          try {
-            const member = await ctx.api.getChatMember(ctx.chat.id, userId);
-            canDelete = ['creator', 'administrator'].includes(member.status);
-          } catch {
-            // Si falla obtener el estado, solo permitir al autor
-          }
-        }
-
-        if (!canDelete) {
-          await ctx.answerCallbackQuery({
-            text: 'Solo el autor o admins pueden borrar',
-            show_alert: true
-          });
-          return;
-        }
-
-        // "Borrar" la página Telegraph (vaciarla)
-        await deletePage(page.path);
-
-        // Borrar el mensaje del bot
+      // Admins y mods pueden borrar siempre
+      let isAdmin = false;
+      if (ctx.chat && userId) {
         try {
-          await ctx.deleteMessage();
-        } catch {
-          await ctx.editMessageText('🗑️ Eliminado');
-        }
-
-        createdPages.delete(pageId);
-        await ctx.answerCallbackQuery({ text: 'Eliminado' });
-      } else {
-        await ctx.answerCallbackQuery({ text: 'No se encontró la página' });
+          const member = await ctx.api.getChatMember(ctx.chat.id, userId);
+          isAdmin = ['creator', 'administrator'].includes(member.status);
+        } catch {}
       }
+
+      const isOwner = userId === ownerId;
+      const withinGrace = Date.now() - createdAt < DELETE_GRACE_PERIOD;
+
+      if (!isAdmin && !isOwner) {
+        await ctx.answerCallbackQuery({
+          text: 'Solo el autor o admins pueden borrar',
+          show_alert: true,
+        });
+        return;
+      }
+
+      if (isOwner && !isAdmin && !withinGrace) {
+        await ctx.answerCallbackQuery({
+          text: 'El tiempo para borrar ha expirado',
+          show_alert: true,
+        });
+        return;
+      }
+
+      // "Borrar" la página Telegraph (vaciarla)
+      await deletePage(telegraphPath);
+
+      try {
+        await ctx.deleteMessage();
+      } catch {
+        await ctx.editMessageText('🗑️ Eliminado');
+      }
+
+      await ctx.answerCallbackQuery({ text: 'Eliminado' });
+      return;
+    }
+
+    // Retrocompatibilidad: botones viejos con formato "delete:path:userId"
+    if (data.startsWith('delete:')) {
+      const parts = data.slice(7).split(':');
+      const ownerId = parseInt(parts.pop()!, 10);
+      const telegraphPath = parts.join(':');
+      const userId = ctx.from?.id;
+
+      let canDelete = userId === ownerId;
+      if (!canDelete && ctx.chat && userId) {
+        try {
+          const member = await ctx.api.getChatMember(ctx.chat.id, userId);
+          canDelete = ['creator', 'administrator'].includes(member.status);
+        } catch {}
+      }
+
+      if (!canDelete) {
+        await ctx.answerCallbackQuery({ text: 'Solo el autor o admins pueden borrar', show_alert: true });
+        return;
+      }
+
+      await deletePage(telegraphPath);
+      try { await ctx.deleteMessage(); } catch { await ctx.editMessageText('🗑️ Eliminado'); }
+      await ctx.answerCallbackQuery({ text: 'Eliminado' });
       return;
     }
 
@@ -428,17 +626,8 @@ async function processAndReply(
   result: CreatePageResult,
   req?: PendingRequest
 ): Promise<void> {
-  const pageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  // Guardar referencia a la página creada
-  createdPages.set(pageId, {
-    path: result.path,
-    url: result.url,
-    originalUrl,
-    botMessageId: req?.botMessageId || 0,
-    chatId: ctx.chat?.id || 0,
-    userId: req?.userId || ctx.from?.id || 0,
-  });
+  const userId = req?.userId || ctx.from?.id || 0;
+  const keyboard = createActionKeyboard(result.path, userId, originalUrl);
 
   // Construir mensaje
   let messageText = result.url;
@@ -458,30 +647,30 @@ async function processAndReply(
     // Intentar borrar el mensaje original
     try {
       await ctx.api.deleteMessage(req.chatId, req.originalMessageId);
-    } catch (error) {
+    } catch {
       // No tenemos permisos para borrar - no pasa nada
-      console.log('No se pudo borrar mensaje original (permisos)');
     }
 
     // Editar el mensaje del bot
     try {
       await ctx.api.editMessageText(req.chatId, req.botMessageId, messageText, {
         parse_mode: 'HTML',
-        reply_markup: createActionKeyboard(pageId, originalUrl),
+        reply_markup: keyboard,
         link_preview_options: { is_disabled: false },
       });
     } catch {
       // Si falla editar, enviar nuevo mensaje
       await ctx.api.sendMessage(req.chatId, messageText, {
         parse_mode: 'HTML',
-        reply_markup: createActionKeyboard(pageId, originalUrl),
+        reply_markup: keyboard,
       });
     }
   } else {
     // Sin pending request (cache hit)
     await ctx.reply(messageText, {
       parse_mode: 'HTML',
-      reply_markup: createActionKeyboard(pageId, originalUrl),
+      reply_markup: keyboard,
+      reply_parameters: ctx.message ? { message_id: ctx.message.message_id } : undefined,
     });
   }
 }

@@ -1,0 +1,237 @@
+// Horóscopo de Yolanda Sultana desde primedigital.cl
+
+const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+interface SignoInfo {
+  id: string;
+  name: string;
+  emoji: string;
+  aliases: string[];
+}
+
+const SIGNOS: SignoInfo[] = [
+  { id: 'aries', name: 'Aries', emoji: '♈', aliases: [] },
+  { id: 'tauro', name: 'Tauro', emoji: '♉', aliases: ['taurus'] },
+  { id: 'geminis', name: 'Géminis', emoji: '♊', aliases: ['gemini', 'géminis'] },
+  { id: 'cancer', name: 'Cáncer', emoji: '♋', aliases: ['cáncer'] },
+  { id: 'leo', name: 'Leo', emoji: '♌', aliases: [] },
+  { id: 'virgo', name: 'Virgo', emoji: '♍', aliases: [] },
+  { id: 'libra', name: 'Libra', emoji: '♎', aliases: [] },
+  { id: 'escorpio', name: 'Escorpio', emoji: '♏', aliases: ['escorpion', 'escorpión'] },
+  { id: 'sagitario', name: 'Sagitario', emoji: '♐', aliases: [] },
+  { id: 'capricornio', name: 'Capricornio', emoji: '♑', aliases: [] },
+  { id: 'acuario', name: 'Acuario', emoji: '♒', aliases: [] },
+  { id: 'piscis', name: 'Piscis', emoji: '♓', aliases: [] },
+];
+
+interface HoroscopoEntry {
+  amor: string;
+  salud: string;
+  dinero: string;
+  color: string;
+  numero: string;
+}
+
+interface HoroscopoData {
+  date: string; // "Lunes 23 de Marzo 2026"
+  signos: Map<string, HoroscopoEntry>;
+}
+
+// Cache por fecha (YYYY-MM-DD)
+const cache = new Map<string, { data: HoroscopoData; expires: number }>();
+const TTL = 24 * 60 * 60 * 1000;
+
+// Cleanup cada hora
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of cache) {
+    if (value.expires < now) cache.delete(key);
+  }
+}, 60 * 60 * 1000);
+
+function findSigno(input: string): SignoInfo | null {
+  const normalized = input.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quitar acentos
+
+  for (const signo of SIGNOS) {
+    const signoNorm = signo.id.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (signoNorm === normalized) return signo;
+    if (signo.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === normalized) return signo;
+    for (const alias of signo.aliases) {
+      if (alias.normalize('NFD').replace(/[\u0300-\u036f]/g, '') === normalized) return signo;
+    }
+  }
+  return null;
+}
+
+function buildUrl(): { url: string; dateLabel: string } {
+  // Obtener fecha en zona horaria de Chile
+  const now = new Date();
+  const chileNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
+
+  // Fecha de publicación = ayer
+  const pubDate = new Date(chileNow);
+  pubDate.setDate(chileNow.getDate() - 1);
+
+  // Fecha del horóscopo = mañana
+  const forDate = new Date(chileNow);
+  forDate.setDate(chileNow.getDate() + 1);
+
+  const y = pubDate.getFullYear();
+  const m = String(pubDate.getMonth() + 1).padStart(2, '0');
+  const d = String(pubDate.getDate()).padStart(2, '0');
+
+  const dayName = DAYS[forDate.getDay()];
+  const forDay = forDate.getDate();
+  const monthName = MONTHS[forDate.getMonth()];
+  const forYear = forDate.getFullYear();
+
+  const url = `https://primedigital.cl/${y}/${m}/${d}/horoscopo-${dayName}-${forDay}-de-${monthName}-${forYear}/`;
+
+  // Label capitalizado
+  const dayNameCap = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+  const monthNameCap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  const dateLabel = `${dayNameCap} ${forDay} de ${monthNameCap} ${forYear}`;
+
+  return { url, dateLabel };
+}
+
+function parseHoroscopo(html: string, dateLabel: string): HoroscopoData {
+  const signos = new Map<string, HoroscopoEntry>();
+
+  // Extraer el contenido del post (div con clase elementor-widget-theme-post-content)
+  const contentMatch = html.match(
+    /class="[^"]*elementor-widget-theme-post-content[^"]*"[^>]*>[\s\S]*?<div[^>]*class="[^"]*elementor-widget-container[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i
+  );
+
+  const content = contentMatch ? contentMatch[1] : html;
+
+  // Limpiar HTML: quitar tags excepto texto
+  const text = content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#8217;/g, "'")
+    .replace(/&#8220;|&#8221;/g, '"')
+    .trim();
+
+  // Buscar cada signo en el texto
+  for (let i = 0; i < SIGNOS.length; i++) {
+    const signo = SIGNOS[i];
+    const nextSigno = SIGNOS[i + 1];
+
+    // Buscar el bloque de este signo (desde su nombre hasta el siguiente signo o fin)
+    const signoPattern = new RegExp(
+      signo.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '.?') + '[:\\s]',
+      'i'
+    );
+    const startIdx = text.search(signoPattern);
+    if (startIdx === -1) continue;
+
+    let endIdx = text.length;
+    if (nextSigno) {
+      const nextPattern = new RegExp(
+        nextSigno.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '.?') + '[:\\s]',
+        'i'
+      );
+      const nextIdx = text.slice(startIdx + 1).search(nextPattern);
+      if (nextIdx !== -1) endIdx = startIdx + 1 + nextIdx;
+    }
+
+    const block = text.slice(startIdx, endIdx).trim();
+
+    // Extraer cada categoría
+    const amor = extractCategory(block, 'AMOR');
+    const salud = extractCategory(block, 'SALUD');
+    const dinero = extractCategory(block, 'DINERO');
+    const color = extractCategory(block, 'COLOR');
+    const numero = extractCategory(block, 'NUMERO');
+
+    signos.set(signo.id, { amor, salud, dinero, color, numero });
+  }
+
+  return { date: dateLabel, signos };
+}
+
+function extractCategory(block: string, category: string): string {
+  // Buscar "AMOR:" o "AMOR :" seguido del texto hasta la siguiente categoría o fin de línea
+  const pattern = new RegExp(
+    category + '\\s*:?\\s*(.+?)(?=(?:AMOR|SALUD|DINERO|COLOR|NUMERO)\\s*:|$)',
+    'is'
+  );
+  const match = block.match(pattern);
+  return match ? match[1].trim() : '';
+}
+
+async function fetchAndParse(): Promise<HoroscopoData> {
+  const { url, dateLabel } = buildUrl();
+
+  // Revisar cache (usar fecha Chile, no UTC)
+  const chileNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' }));
+  const today = `${chileNow.getFullYear()}-${String(chileNow.getMonth() + 1).padStart(2, '0')}-${String(chileNow.getDate()).padStart(2, '0')}`;
+  const cached = cache.get(today);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data;
+  }
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`primedigital.cl respondió ${response.status}`);
+  }
+
+  const html = await response.text();
+  const data = parseHoroscopo(html, dateLabel);
+
+  if (data.signos.size === 0) {
+    throw new Error('No se encontraron signos en la página');
+  }
+
+  // Guardar en cache
+  cache.set(today, { data, expires: Date.now() + TTL });
+
+  return data;
+}
+
+export function getSignosList(): string {
+  return SIGNOS.map(s => `${s.emoji} ${s.name}`).join('\n');
+}
+
+export async function getHoroscopo(input: string): Promise<string> {
+  const signo = findSigno(input);
+  if (!signo) {
+    return `❌ Signo no reconocido: <b>${input}</b>\n\n🔮 Signos disponibles:\n${getSignosList()}`;
+  }
+
+  const data = await fetchAndParse();
+  const entry = data.signos.get(signo.id);
+
+  if (!entry) {
+    return `❌ No encontré el horóscopo de ${signo.name} para hoy.`;
+  }
+
+  const lines = [
+    `🔮 <b>Horóscopo de ${signo.name}</b> ${signo.emoji}`,
+    `📅 ${data.date}`,
+    '',
+  ];
+
+  if (entry.amor) lines.push(`❤️ <b>AMOR:</b> ${entry.amor}`);
+  if (entry.salud) lines.push(`🏥 <b>SALUD:</b> ${entry.salud}`);
+  if (entry.dinero) lines.push(`💰 <b>DINERO:</b> ${entry.dinero}`);
+  if (entry.color) lines.push(`🎨 <b>COLOR:</b> ${entry.color}`);
+  if (entry.numero) lines.push(`🔢 <b>NÚMERO:</b> ${entry.numero}`);
+
+  lines.push('');
+  lines.push('<i>🌭 Fuente: Yolanda Sultana (primedigital.cl)</i>');
+
+  return lines.join('\n');
+}

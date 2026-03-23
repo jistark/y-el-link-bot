@@ -74,7 +74,7 @@ function extractWaPo(html: string): Article | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: WAPO_HEADERS });
+  const response = await fetch(url, { headers: WAPO_HEADERS, signal: AbortSignal.timeout(15000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
