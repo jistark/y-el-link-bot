@@ -290,8 +290,63 @@ function formatCLP(value: number): string {
   });
 }
 
+// Podscope API: ranking de streams chilenos en YouTube
+interface PodscopeRanking {
+  rank: number;
+  channelName: string;
+  videoTitle: string;
+  viewers: number;
+  peakViewers: number;
+  videoId: string;
+}
+
+interface PodscopeResponse {
+  rankings: PodscopeRanking[];
+  updatedAt: string;
+  totalCount: number;
+  totalViewers: number;
+}
+
+async function fetchYouTubeRankings(): Promise<PodscopeResponse> {
+  const response = await fetch('https://api.podscope.co/api/live/rankings');
+  if (!response.ok) throw new Error(`Podscope API error: ${response.status}`);
+  return response.json() as Promise<PodscopeResponse>;
+}
+
+function formatViewers(n: number): string {
+  return n.toLocaleString('es-CL');
+}
+
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
+
+  // Comando /rating_youtube (también responde a /ryt como alias corto)
+  bot.command(['rating_youtube', 'ryt'], async (ctx) => {
+    console.log('Comando rating_youtube recibido');
+
+    try {
+      const data = await fetchYouTubeRankings();
+      const time = getChileTime();
+
+      const lines = data.rankings.map(({ rank, channelName, videoTitle, viewers, peakViewers }) => {
+        const medal = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : `${rank}.`;
+        // Truncar título del video si es muy largo
+        const title = videoTitle.length > 50 ? videoTitle.slice(0, 47) + '...' : videoTitle;
+        return `${medal} <b>${channelName}</b>: ${formatViewers(viewers)} 👀\n    <i>${title}</i>` +
+          (peakViewers > viewers ? `\n    (peak: ${formatViewers(peakViewers)})` : '');
+      });
+
+      const message = `📺 <b>Rating YouTube Chile</b> (${time} hrs)\n\n` +
+        `${lines.join('\n\n')}\n\n` +
+        `📡 ${data.totalCount} streams | 👥 ${formatViewers(data.totalViewers)} viewers\n` +
+        `<i>Fuente: podscope.co</i>`;
+
+      await ctx.reply(message, { parse_mode: 'HTML' });
+    } catch (error) {
+      console.error('Error fetching YouTube rankings:', error);
+      await ctx.reply('❌ No pude obtener el ranking de YouTube. Intenta de nuevo más tarde.');
+    }
+  });
 
   // Comando /rating_zapping (también responde a /rz como alias corto)
   bot.command(['rating_zapping', 'rz'], async (ctx) => {

@@ -14,6 +14,7 @@ const bot = createBot(token);
 // Registrar comandos en el menú de Telegram
 await bot.api.setMyCommands([
   { command: 'rz', description: 'Rating de canales de TV (Zapping)' },
+  { command: 'ryt', description: 'Rating de streams chilenos en YouTube' },
   { command: 'dolar', description: 'Precio del dólar en Chile' },
   { command: 'tiayoli', description: 'Horóscopo de Yolanda Sultana' },
   { command: 'donar', description: 'Apoyar la mantención del bot' },
