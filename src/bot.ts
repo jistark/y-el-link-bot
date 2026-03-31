@@ -684,8 +684,11 @@ export function createBot(token: string): Bot {
         return;
       }
 
-      // "Borrar" la página Telegraph (vaciarla)
+      // "Borrar" la página Telegraph (vaciarla) e invalidar cache
       await deletePage(telegraphPath);
+      for (const [cachedUrl, entry] of cache) {
+        if (entry.result.path === telegraphPath) { cache.delete(cachedUrl); break; }
+      }
 
       try {
         await ctx.deleteMessage();
@@ -718,6 +721,9 @@ export function createBot(token: string): Bot {
       }
 
       await deletePage(telegraphPath);
+      for (const [cachedUrl, entry] of cache) {
+        if (entry.result.path === telegraphPath) { cache.delete(cachedUrl); break; }
+      }
       try { await ctx.deleteMessage(); } catch { await ctx.editMessageText('🗑️ Eliminado'); }
       await ctx.answerCallbackQuery({ text: 'Eliminado' });
       return;
