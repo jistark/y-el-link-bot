@@ -1,12 +1,5 @@
 import type { Article } from '../types.js';
-
-const NYT_HEADERS = {
-  'User-Agent': 'Twitterbot/1.0',
-};
-
-const GOOGLEBOT_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-};
+import { fetchBypass } from './fetch-bypass.js';
 
 interface JsonLdArticle {
   '@type'?: string;
@@ -78,18 +71,7 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  let response = await fetch(url, { headers: NYT_HEADERS, signal: AbortSignal.timeout(15000) });
-
-  // Fallback a Googlebot UA si Twitterbot es bloqueado
-  if (response.status === 403) {
-    response = await fetch(url, { headers: GOOGLEBOT_HEADERS, signal: AbortSignal.timeout(15000) });
-  }
-
-  if (!response.ok) {
-    throw new Error(`Error al obtener artículo: ${response.status}`);
-  }
-
-  const html = await response.text();
+  const html = await fetchBypass(url, 'https://www.google.com/');
 
   // Extract JSON-LD for metadata
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;

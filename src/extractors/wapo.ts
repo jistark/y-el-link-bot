@@ -1,8 +1,5 @@
 import type { Article } from '../types.js';
-
-const WAPO_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-};
+import { fetchBypass } from './fetch-bypass.js';
 
 interface WaPoNextData {
   props?: {
@@ -74,12 +71,7 @@ function extractWaPo(html: string): Article | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: WAPO_HEADERS, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) {
-    throw new Error(`Error al obtener artículo: ${response.status}`);
-  }
-
-  const html = await response.text();
+  const html = await fetchBypass(url, 'https://www.google.com/');
   const article = extractWaPo(html);
 
   if (!article) {

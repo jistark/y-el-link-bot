@@ -1,8 +1,5 @@
 import type { Article } from '../types.js';
-
-const ATLANTIC_HEADERS = {
-  'User-Agent': 'Twitterbot/1.0',
-};
+import { fetchBypass } from './fetch-bypass.js';
 
 interface JsonLdArticle {
   '@type'?: string;
@@ -72,12 +69,7 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: ATLANTIC_HEADERS });
-  if (!response.ok) {
-    throw new Error(`Error al obtener artículo: ${response.status}`);
-  }
-
-  const html = await response.text();
+  const html = await fetchBypass(url, 'https://www.google.com/');
 
   // Extract JSON-LD
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;

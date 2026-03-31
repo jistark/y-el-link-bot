@@ -1,9 +1,5 @@
 import type { Article } from '../types.js';
-
-// Wired (Condé Nast) - Googlebot UA
-const WIRED_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-};
+import { fetchBypass } from './fetch-bypass.js';
 
 interface JsonLdArticle {
   '@type'?: string;
@@ -73,12 +69,7 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: WIRED_HEADERS });
-  if (!response.ok) {
-    throw new Error(`Error al obtener artículo: ${response.status}`);
-  }
-
-  const html = await response.text();
+  const html = await fetchBypass(url, 'https://www.google.com/');
 
   // Extract JSON-LD
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
