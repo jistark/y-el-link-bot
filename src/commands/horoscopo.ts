@@ -86,18 +86,17 @@ function extractDateFromSlug(finalUrl: string): string {
   return `${cap(dayName)} ${chileNow.getDate()} de ${cap(monthName)} ${chileNow.getFullYear()}`;
 }
 
+// Nombres que usa primedigital.cl para cada signo (puede diferir de SIGNOS)
+const SIGNO_SEARCH_NAMES = [
+  'ARIES', 'TAURO', 'GÉMINIS', 'CÁNCER', 'LEO', 'VIRGO',
+  'LIBRA', 'ESCORPIÓN', 'SAGITARIO', 'CAPRICORNIO', 'ACUARIO', 'PISCIS',
+];
+
 function parseHoroscopo(html: string, dateLabel: string): HoroscopoData {
   const signos = new Map<string, HoroscopoEntry>();
 
-  // Extraer el contenido del post (div con clase elementor-widget-theme-post-content)
-  const contentMatch = html.match(
-    /class="[^"]*elementor-widget-theme-post-content[^"]*"[^>]*>[\s\S]*?<div[^>]*class="[^"]*elementor-widget-container[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i
-  );
-
-  const content = contentMatch ? contentMatch[1] : html;
-
-  // Limpiar HTML: quitar tags excepto texto
-  const text = content
+  // Limpiar HTML a texto plano
+  let text = html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
     .replace(/<[^>]+>/g, '')
@@ -110,32 +109,35 @@ function parseHoroscopo(html: string, dateLabel: string): HoroscopoData {
     .replace(/&#8220;|&#8221;/g, '"')
     .trim();
 
-  // Buscar cada signo en el texto
+  // Normalizar texto Y patrones a NFD para matching consistente de acentos
+  const normalizedText = text.normalize('NFD');
+
   for (let i = 0; i < SIGNOS.length; i++) {
     const signo = SIGNOS[i];
-    const nextSigno = SIGNOS[i + 1];
+    const searchName = SIGNO_SEARCH_NAMES[i];
 
-    // Buscar el bloque de este signo (desde su nombre hasta el siguiente signo o fin)
-    const signoPattern = new RegExp(
-      signo.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '.?') + '[:\\s]',
+    // Normalizar nombre de búsqueda a NFD y crear patrón que haga acentos opcionales
+    const pattern = new RegExp(
+      searchName.normalize('NFD').replace(/[\u0300-\u036f]/g, '[\u0300-\u036f]?') + '\\b',
       'i'
     );
-    const startIdx = text.search(signoPattern);
-    if (startIdx === -1) continue;
 
-    let endIdx = text.length;
-    if (nextSigno) {
+    const startMatch = normalizedText.search(pattern);
+    if (startMatch === -1) continue;
+
+    // Buscar el siguiente signo para delimitar el bloque
+    let endIdx = normalizedText.length;
+    if (i + 1 < SIGNO_SEARCH_NAMES.length) {
       const nextPattern = new RegExp(
-        nextSigno.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '.?') + '[:\\s]',
+        SIGNO_SEARCH_NAMES[i + 1].normalize('NFD').replace(/[\u0300-\u036f]/g, '[\u0300-\u036f]?') + '\\b',
         'i'
       );
-      const nextIdx = text.slice(startIdx + 1).search(nextPattern);
-      if (nextIdx !== -1) endIdx = startIdx + 1 + nextIdx;
+      const nextIdx = normalizedText.slice(startMatch + 1).search(nextPattern);
+      if (nextIdx !== -1) endIdx = startMatch + 1 + nextIdx;
     }
 
-    const block = text.slice(startIdx, endIdx).trim();
+    const block = normalizedText.slice(startMatch, endIdx).trim();
 
-    // Extraer cada categoría
     const amor = extractCategory(block, 'AMOR');
     const salud = extractCategory(block, 'SALUD');
     const dinero = extractCategory(block, 'DINERO');

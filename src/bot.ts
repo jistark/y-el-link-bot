@@ -246,11 +246,14 @@ async function fetchDollarPrices(): Promise<{
 
   // Extraer quotes del dehydrated state (React Query)
   // Los sources y data blocks aparecen en el mismo orden en el HTML
+  // dolar.cl puede tener dos formatos de hydration:
+  //   lastQuote|{\"source\":\"fintual\"}  (escaped)
+  //   lastQuote","source":"fintual"}      (JSON)
   const sourceOrder: string[] = [];
-  const sourcePattern = /lastQuote\|?\{\\"source\\":\\"(\w+)\\"\}/g;
+  const sourcePattern = /lastQuote["|,]\S*?source[\\"]+"?:?\s*[\\"]+"?(\w+)/g;
   let sm: RegExpExecArray | null;
   while ((sm = sourcePattern.exec(html)) !== null) {
-    sourceOrder.push(sm[1]);
+    if (!sourceOrder.includes(sm[1])) sourceOrder.push(sm[1]);
   }
 
   const dataBlocks: { buy: number; sell: number; time: number }[] = [];
