@@ -1,4 +1,5 @@
 // Horóscopo de Yolanda Sultana desde primedigital.cl
+import { fetchBypass } from '../extractors/fetch-bypass.js';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -167,18 +168,24 @@ async function fetchAndParse(): Promise<HoroscopoData> {
   }
 
   // Seguir redirect de /horoscopo/ al post más reciente
-  const response = await fetch(HOROSCOPO_URL, {
-    signal: AbortSignal.timeout(15000),
-    redirect: 'follow',
-  });
-
-  if (!response.ok) {
-    throw new Error(`primedigital.cl respondió ${response.status}`);
+  let html: string;
+  let finalUrl: string;
+  try {
+    const response = await fetch(HOROSCOPO_URL, {
+      signal: AbortSignal.timeout(15000),
+      redirect: 'follow',
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    finalUrl = response.url;
+    html = await response.text();
+  } catch {
+    // Fallback: curl_cffi for bot detection bypass
+    html = await fetchBypass(HOROSCOPO_URL);
+    // Extract final URL from HTML since fetchBypass follows redirects
+    const canonicalMatch = html.match(/<link[^>]*rel="canonical"[^>]*href="([^"]+)"/i);
+    finalUrl = canonicalMatch?.[1] || HOROSCOPO_URL;
   }
-
-  const finalUrl = response.url; // URL después del redirect
   const dateLabel = extractDateFromSlug(finalUrl);
-  const html = await response.text();
   const data = parseHoroscopo(html, dateLabel);
 
   if (data.signos.size === 0) {

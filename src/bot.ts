@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard, Context } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
+import { fetchBypass } from './extractors/fetch-bypass.js';
 
 // Tiempo de gracia para undo antes de procesar (en ms)
 const UNDO_GRACE_PERIOD = 5000;
@@ -211,21 +212,23 @@ async function fetchDollarPrices(): Promise<{
   quotes: { source: typeof DOLLAR_SOURCES[number]; quote: DollarQuote | null }[];
 }> {
   // Fetch HTML de dolar.cl - los precios están embebidos como React Query dehydrated state
-  const response = await fetch('https://dolar.cl/', {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      'sec-fetch-dest': 'document',
-      'sec-fetch-mode': 'navigate',
-      'sec-fetch-site': 'none',
-    },
-    signal: AbortSignal.timeout(15000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`dolar.cl respondió ${response.status}`);
+  let html: string;
+  try {
+    const response = await fetch('https://dolar.cl/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    html = await response.text();
+  } catch {
+    // Fallback: curl_cffi bypasses Vercel bot detection
+    html = await fetchBypass('https://dolar.cl/');
   }
-
-  const html = await response.text();
 
   // Extraer live quote del dehydrated state
   let live: LiveQuote | null = null;

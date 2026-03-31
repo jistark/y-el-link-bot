@@ -2,7 +2,7 @@ import type { Article } from '../types.js';
 import * as fourzerofourmedia from './404media.js';
 // beehiiv and substack deprecated - extraction unreliable
 import * as biobio from './biobio.js';
-// bloomberg requires browser-level bypass
+import * as bloomberg from './bloomberg.js';
 import * as cnnchile from './cnnchile.js';
 import * as df from './df.js';
 import * as elmercurio from './elmercurio.js';
@@ -31,11 +31,12 @@ const URL_PATTERNS = {
   biobio: /biobiochile\.cl|pagina7\.cl/,
   elpais: /elpais\.com/,
   ft: /ft\.com/,
+  bloomberg: /bloomberg\.com/,
   theatlantic: /theatlantic\.com/,
   wired: /wired\.com/,
   '404media': /404media\.co/,
   // substack and beehiiv deprecated - extraction unreliable
-  // bloomberg and reuters require browser-level bypass (cookies/JS blocking)
+  // reuters requires browser-level bypass
 } as const;
 
 export type Source = keyof typeof URL_PATTERNS;
@@ -94,6 +95,9 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'ft':
       return ft.extract(url);
+
+    case 'bloomberg':
+      return bloomberg.extract(url);
 
     case 'theatlantic':
       return theatlantic.extract(url);
