@@ -188,8 +188,6 @@ async function fetchDollarFallback(): Promise<number> {
   return data.serie[0].valor;
 }
 
-const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 horas
-
 interface DollarQuote {
   buy: number;
   sell: number | null;
@@ -323,6 +321,15 @@ function formatViewers(n: number): string {
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
 
+  bot.catch((err) => {
+    console.error(JSON.stringify({
+      event: 'bot_error',
+      error: err.message,
+      ctx: err.ctx?.update?.update_id,
+      timestamp: new Date().toISOString(),
+    }));
+  });
+
   // Comando /rating_youtube (también responde a /ryt como alias corto)
   bot.command(['rating_youtube', 'ryt'], async (ctx) => {
     console.log('Comando rating_youtube recibido');
@@ -410,7 +417,7 @@ export function createBot(token: string): Bot {
         if (filtered.length === 0) {
           const available = DOLLAR_SOURCES.map(s => s.name).join(', ');
           await ctx.reply(
-            `❌ No encontré "<b>${filter}</b>"\n\n🏦 Fuentes disponibles: ${available}`,
+            `❌ No encontré "<b>${escapeHtml(filter || '')}</b>"\n\n🏦 Fuentes disponibles: ${available}`,
             { parse_mode: 'HTML' }
           );
           return;
@@ -482,7 +489,7 @@ export function createBot(token: string): Bot {
 
   // Comando /tiayoli - Horóscopo de Yolanda Sultana
   bot.command(['tiayoli', 'horoscopo'], async (ctx) => {
-    const signo = ctx.match?.trim();
+    const signo = escapeHtml(ctx.match?.trim() || '');
     if (!signo) {
       await ctx.reply(
         `🔮 <b>Horóscopo de Yolanda Sultana</b>\n\nUsa: /tiayoli &lt;signo&gt;\n\n${getSignosList()}`,

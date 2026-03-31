@@ -38,6 +38,7 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   theatlantic: 'atl',
   wired: 'wrd',
   '404media': '404m',
+  bloomberg: 'bbg',
 };
 
 function generateSlug(source: Article['source']): string {

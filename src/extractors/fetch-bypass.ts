@@ -19,6 +19,7 @@ export async function fetchBypass(url: string, referer?: string): Promise<string
 
     const proc = spawn(PYTHON_CMD, args, {
       timeout: TIMEOUT_MS,
+      killSignal: 'SIGKILL',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
