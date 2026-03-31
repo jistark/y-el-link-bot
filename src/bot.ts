@@ -25,6 +25,7 @@ interface PendingRequest {
   botMessageId: number;
   timeoutId: ReturnType<typeof setTimeout>;
   cancelled: boolean;
+  replyToMessageId?: number; // Si el mensaje original era un reply, preservar la relación
 }
 
 const pending = new Map<string, PendingRequest>();
@@ -548,8 +549,13 @@ export function createBot(token: string): Bot {
         }
 
         try {
-          // Extraer y crear página
-          const article = await extractArticle(url);
+          // Extraer y crear página (30s timeout global para evitar cuelgues)
+          const article = await Promise.race([
+            extractArticle(url),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout: extracción tomó más de 30s')), 30_000)
+            ),
+          ]);
           const result = await createPage(article);
 
           // Guardar en cache
@@ -593,6 +599,7 @@ export function createBot(token: string): Bot {
         botMessageId: botMessage.message_id,
         timeoutId,
         cancelled: false,
+        replyToMessageId: ctx.message.reply_to_message?.message_id,
       });
     }
   });
@@ -746,26 +753,31 @@ async function processAndReply(
       messageText = `${mention} compartió:\n${result.url}`;
     }
 
-    // Intentar borrar el mensaje original
-    try {
-      await ctx.api.deleteMessage(req.chatId, req.originalMessageId);
-    } catch {
-      // No tenemos permisos para borrar - no pasa nada
-    }
-
-    // Editar el mensaje del bot
-    try {
-      await ctx.api.editMessageText(req.chatId, req.botMessageId, messageText, {
-        parse_mode: 'HTML',
-        reply_markup: keyboard,
-        link_preview_options: { is_disabled: false },
-      });
-    } catch {
-      // Si falla editar, enviar nuevo mensaje
+    if (req.replyToMessageId) {
+      // El usuario respondió a otro mensaje con un link — borrar "⏳ Procesando" y
+      // el mensaje del usuario, luego publicar como reply al mensaje padre original
+      try { await ctx.api.deleteMessage(req.chatId, req.botMessageId); } catch { /* ok */ }
+      try { await ctx.api.deleteMessage(req.chatId, req.originalMessageId); } catch { /* ok */ }
       await ctx.api.sendMessage(req.chatId, messageText, {
         parse_mode: 'HTML',
         reply_markup: keyboard,
+        reply_parameters: { message_id: req.replyToMessageId, allow_sending_without_reply: true },
       });
+    } else {
+      // Mensaje directo con link — borrar original, editar "⏳ Procesando" con resultado
+      try { await ctx.api.deleteMessage(req.chatId, req.originalMessageId); } catch { /* ok */ }
+      try {
+        await ctx.api.editMessageText(req.chatId, req.botMessageId, messageText, {
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+          link_preview_options: { is_disabled: false },
+        });
+      } catch {
+        await ctx.api.sendMessage(req.chatId, messageText, {
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        });
+      }
     }
   } else {
     // Sin pending request (cache hit)
