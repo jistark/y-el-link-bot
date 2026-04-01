@@ -26,6 +26,7 @@ interface PendingRequest {
   timeoutId: ReturnType<typeof setTimeout>;
   cancelled: boolean;
   replyToMessageId?: number; // Si el mensaje original era un reply, preservar la relación
+  threadId?: number; // Topic/foro de Telegram
 }
 
 const pending = new Map<string, PendingRequest>();
@@ -616,6 +617,7 @@ export function createBot(token: string): Bot {
         timeoutId,
         cancelled: false,
         replyToMessageId: ctx.message.reply_to_message?.message_id,
+        threadId: ctx.message.message_thread_id,
       });
     }
   });
@@ -781,6 +783,7 @@ async function processAndReply(
       try { await ctx.api.deleteMessage(req.chatId, req.botMessageId); } catch { /* ok */ }
       try { await ctx.api.deleteMessage(req.chatId, req.originalMessageId); } catch { /* ok */ }
       await ctx.api.sendMessage(req.chatId, messageText, {
+        message_thread_id: req.threadId,
         parse_mode: 'HTML',
         reply_markup: keyboard,
         reply_parameters: { message_id: req.replyToMessageId, allow_sending_without_reply: true },
@@ -796,6 +799,7 @@ async function processAndReply(
         });
       } catch {
         await ctx.api.sendMessage(req.chatId, messageText, {
+          message_thread_id: req.threadId,
           parse_mode: 'HTML',
           reply_markup: keyboard,
         });
@@ -804,6 +808,7 @@ async function processAndReply(
   } else {
     // Sin pending request (cache hit)
     await ctx.reply(messageText, {
+      message_thread_id: ctx.message?.message_thread_id,
       parse_mode: 'HTML',
       reply_markup: keyboard,
       reply_parameters: ctx.message ? { message_id: ctx.message.message_id } : undefined,
