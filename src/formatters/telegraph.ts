@@ -230,7 +230,11 @@ function stripUnknownTags(html: string): string {
 function htmlToNodes(html: string): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
 
-  // Paso 0: Eliminar tags HTML desconocidos (ej: <capitals>, <subhead>)
+  // Paso 0: Limpiar tags HTML
+  // Normalizar <a> tags: quitar atributos extra (type, id, class, etc.) dejando solo href
+  html = html.replace(/<a\s+[^>]*?href="([^"]*)"[^>]*>/gi, '<a href="$1">');
+  html = html.replace(/<a\s+[^>]*?href='([^']*)'[^>]*>/gi, '<a href="$1">');
+  // Eliminar tags desconocidos (ej: <capitals>, <subhead>)
   html = stripUnknownTags(html);
 
   // Paso 1: Normalizar saltos - <div>, </div>, <br> → \n
