@@ -610,6 +610,7 @@ export function createBot(token: string): Bot {
       await ctx.reply(result, {
         parse_mode: 'HTML',
         reply_to_message_id: ctx.message!.message_id,
+        allow_sending_without_reply: true,
       });
     } catch (error) {
       console.error(JSON.stringify({
@@ -640,26 +641,26 @@ export function createBot(token: string): Bot {
     if ((!arg && !hadInput) || arg === 'hoy') {
       const countdown = getCountdown();
       if (countdown) {
-        await ctx.reply(countdown, { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
+        await ctx.reply(countdown, { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
         return;
       }
       const today = getChileDate();
       const matches = getMatchesForDate(today);
-      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
+      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
       return;
     }
 
     if (arg === 'mañana' || arg === 'manana') {
       const tomorrow = getChileDate(1);
       const matches = getMatchesForDate(tomorrow);
-      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
+      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
       return;
     }
 
     if (arg === 'semana') {
       const today = getChileDate();
       const matches = getMatchesForWeek(today);
-      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
+      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
       return;
     }
 
@@ -668,14 +669,14 @@ export function createBot(token: string): Bot {
       const teamList = teams.map(t => `• ${t}`).join('\n');
       await ctx.reply(
         `\u26BD <b>Mundial 2026 — Equipos participantes</b>\n\n${teamList}`,
-        { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
+        { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true }
       );
       return;
     }
 
     // Easter eggs
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const replyOpts = { reply_to_message_id: ctx.message!.message_id };
+    const replyOpts = { reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true };
 
     // Chile no clasificó
     if (argNorm === 'chile' || argNorm === 'la roja') {
@@ -716,7 +717,7 @@ export function createBot(token: string): Bot {
     // Buscar por equipo
     const result = getMatchesForTeam(arg);
     if (result) {
-      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
+      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
       return;
     }
 
@@ -725,7 +726,7 @@ export function createBot(token: string): Bot {
     await ctx.reply(
       `\u26BD\u274C <b>${escapeHtml(displayArg)}</b> NO va al mundial 2026\n\n` +
       'Usa /mundial equipos para ver quiénes sí van',
-      { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true }
     );
   });
 
@@ -810,6 +811,7 @@ export function createBot(token: string): Bot {
       const botMessage = await ctx.reply('⏳ Procesando artículo...', {
         reply_markup: createUndoKeyboard(),
         reply_to_message_id: ctx.message.message_id,
+        allow_sending_without_reply: true,
       });
 
       // Configurar timeout para procesar después del período de gracia
