@@ -512,7 +512,8 @@ export function createBot(token: string): Bot {
     }
 
     try {
-      const result = await getHoroscopo(signo);
+      const userName = ctx.from?.first_name || ctx.from?.username || '';
+      const result = await getHoroscopo(signo, userName);
       await ctx.reply(result, {
         parse_mode: 'HTML',
         reply_parameters: { message_id: ctx.message!.message_id },

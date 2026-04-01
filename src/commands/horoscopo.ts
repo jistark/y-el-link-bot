@@ -204,7 +204,7 @@ export function getSignosList(): string {
   return SIGNOS.map(s => `${s.emoji} ${s.name}`).join('\n');
 }
 
-export async function getHoroscopo(input: string): Promise<string> {
+export async function getHoroscopo(input: string, userName?: string): Promise<string> {
   const signo = findSigno(input);
   if (!signo) {
     return `❌ Signo no reconocido: <b>${input}</b>\n\n🔮 Signos disponibles:\n${getSignosList()}`;
@@ -217,8 +217,9 @@ export async function getHoroscopo(input: string): Promise<string> {
     return `❌ No encontré el horóscopo de ${signo.name} para hoy.`;
   }
 
+  const para = userName ? ` para ${userName}` : '';
   const lines = [
-    `🔮 <b>Horóscopo de ${signo.name}</b> ${signo.emoji}`,
+    `🔮 <b>Horóscopo de ${signo.name}${para}</b> ${signo.emoji}`,
     `📅 ${data.date}`,
     '',
   ];
@@ -227,10 +228,10 @@ export async function getHoroscopo(input: string): Promise<string> {
   if (entry.salud) lines.push(`🏥 <b>SALUD:</b> ${entry.salud}`);
   if (entry.dinero) lines.push(`💰 <b>DINERO:</b> ${entry.dinero}`);
   if (entry.color) lines.push(`🎨 <b>COLOR:</b> ${entry.color}`);
-  if (entry.numero) lines.push(`🔢 <b>NÚMERO:</b> ${entry.numero}`);
+  if (entry.numero) lines.push(`🎲 <b>NÚMERO:</b> ${entry.numero}`);
 
   lines.push('');
-  lines.push('<i>🌭 Fuente: Yolanda Sultana (primedigital.cl)</i>');
+  lines.push('¡QUE NOS VAIGA BIEN, QUE NOS VAIGA BIEN! 🤞');
 
   return lines.join('\n');
 }
