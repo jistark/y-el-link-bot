@@ -4,7 +4,7 @@ import { createPage, deletePage, type CreatePageResult } from './formatters/tele
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import {
   getChileDate, getChileTimeNow, getMatchesForDate, getMatchesForWeek,
-  getMatchesForTeam, getMatchesAtTime, getCountdown,
+  getMatchesForTeam, getMatchesAtTime, getCountdown, getAllTeams,
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
@@ -624,10 +624,20 @@ export function createBot(token: string): Bot {
 
   // Comando /mundial - Partidos del Mundial FIFA 2026
   bot.command(['mundial', 'wc'], async (ctx) => {
-    const arg = ctx.match?.trim().toLowerCase() || '';
+    // Sanitizar input: strip HTML tags, invisible Unicode, y limitar largo
+    const rawArg = ctx.match?.trim() || '';
+    const arg = rawArg
+      .replace(/<[^>]*>/g, '')                    // Strip HTML tags
+      .replace(/[^\p{L}\p{N}\s'-]/gu, '')         // Solo letras, números, espacios, guiones, apóstrofes
+      .trim()
+      .toLowerCase()
+      .slice(0, 50);                              // Limitar largo
+
+    // Si el input original tenía contenido pero el sanitizado está vacío → basura
+    const hadInput = rawArg.length > 0;
 
     // Sin argumento o "hoy": countdown o partidos de hoy
-    if (!arg || arg === 'hoy') {
+    if ((!arg && !hadInput) || arg === 'hoy') {
       const countdown = getCountdown();
       if (countdown) {
         await ctx.reply(countdown, { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
@@ -667,10 +677,16 @@ export function createBot(token: string): Bot {
       return;
     }
 
-    // Equipo no encontrado en el torneo
+    // Equipo no encontrado — mostrar equipos disponibles
+    const teams = getAllTeams();
+    const teamList = teams.map(t => `• ${t}`).join('\n');
+    const notFoundHeader = arg
+      ? `"${escapeHtml(arg)}" no participa en el Mundial 2026.`
+      : 'No entendí la consulta.';
     await ctx.reply(
-      `\u26BD <b>Mundial 2026</b>\n\n"${escapeHtml(arg)}" no participa en el Mundial 2026.\n\n` +
-      '<i>Prueba con /mundial argentina, /mundial brasil, etc.</i>',
+      `\u26BD <b>Mundial 2026</b>\n\n${notFoundHeader}\n\n` +
+      `<b>Equipos participantes:</b>\n${teamList}\n\n` +
+      '<i>/mundial [equipo] — /mundial hoy — /mundial semana</i>',
       { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
     );
   });

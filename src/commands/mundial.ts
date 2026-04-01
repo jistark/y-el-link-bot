@@ -162,6 +162,15 @@ export function getCountdown(): string | null {
   ].join('\n');
 }
 
+export function getAllTeams(): string[] {
+  const teams = new Set<string>();
+  for (const m of MATCHES) {
+    teams.add(m.team1);
+    teams.add(m.team2);
+  }
+  return [...teams].sort();
+}
+
 // Para notificaciones automáticas
 export function formatNotification(matches: Match[]): string {
   const lines = matches.map(m => {
