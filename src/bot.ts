@@ -170,7 +170,7 @@ const DOLLAR_SOURCES = [
   { id: 'falabella', name: 'Banco Falabella', aliases: ['cmr', 'falabella'] },
   { id: 'bancochile', name: 'Banco de Chile', aliases: ['bancochile', 'banco chile', 'bch'] },
   { id: 'itau', name: 'Itaú', aliases: ['itau'] },
-  { id: 'estado', name: 'BancoEstado', aliases: ['banco estado', 'bech'] },
+  { id: 'estado', name: 'BancoEstado', aliases: ['banco estado', 'bancoestado', 'bech'] },
   { id: 'santander', name: 'Santander', aliases: [] },
 ] as const;
 
