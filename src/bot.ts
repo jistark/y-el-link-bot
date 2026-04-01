@@ -268,6 +268,10 @@ async function fetchDollarPrices(): Promise<{
 
   console.log(`dolar.cl: ${sourceOrder.length} sources, ${dataBlocks.length} data blocks, live: ${!!live}`);
 
+  if (sourceOrder.length === 0 || dataBlocks.length === 0) {
+    throw new Error('dolar.cl no devolvió datos de precios');
+  }
+
   // Mapear sources a data por posición
   const sourceDataMap = new Map<string, { buy: number; sell: number; time: number }>();
   for (let i = 0; i < Math.min(sourceOrder.length, dataBlocks.length); i++) {
