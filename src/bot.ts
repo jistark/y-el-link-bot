@@ -211,6 +211,8 @@ async function fetchDollarPrices(): Promise<{
   quotes: { source: typeof DOLLAR_SOURCES[number]; quote: DollarQuote | null }[];
 }> {
   // Fetch HTML de dolar.cl - los precios están embebidos como React Query dehydrated state
+  // dolar.cl usa Vercel con bot protection — Bun a veces recibe 200 con HTML vacío
+  // de data (challenge page). Intentar directo, validar contenido, fallback a curl_cffi.
   let html: string;
   try {
     const response = await fetch('https://dolar.cl/', {
@@ -224,8 +226,9 @@ async function fetchDollarPrices(): Promise<{
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     html = await response.text();
+    // Verificar que el HTML tiene datos reales (no challenge page)
+    if (!html.includes('"buy"')) throw new Error('dolar.cl devolvió challenge page');
   } catch {
-    // Fallback: curl_cffi bypasses Vercel bot detection
     html = await fetchBypass('https://dolar.cl/');
   }
 
@@ -262,6 +265,8 @@ async function fetchDollarPrices(): Promise<{
   while ((dm = dataPattern.exec(html)) !== null) {
     dataBlocks.push({ buy: parseFloat(dm[1]), sell: parseFloat(dm[2]), time: parseInt(dm[3]) });
   }
+
+  console.log(`dolar.cl: ${sourceOrder.length} sources, ${dataBlocks.length} data blocks, live: ${!!live}`);
 
   // Mapear sources a data por posición
   const sourceDataMap = new Map<string, { buy: number; sell: number; time: number }>();
