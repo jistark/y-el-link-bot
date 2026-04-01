@@ -335,6 +335,18 @@ function formatViewers(n: number): string {
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
 
+  // Preservar topic/thread en grupos con foros: inyectar message_thread_id
+  // en todas las respuestas automáticamente
+  bot.use((ctx, next) => {
+    const threadId = ctx.message?.message_thread_id;
+    if (threadId) {
+      const originalReply = ctx.reply.bind(ctx);
+      ctx.reply = (text: string, other?: any) =>
+        originalReply(text, { message_thread_id: threadId, ...other });
+    }
+    return next();
+  });
+
   bot.catch((err) => {
     console.error(JSON.stringify({
       event: 'bot_error',
@@ -808,7 +820,6 @@ async function processAndReply(
   } else {
     // Sin pending request (cache hit)
     await ctx.reply(messageText, {
-      message_thread_id: ctx.message?.message_thread_id,
       parse_mode: 'HTML',
       reply_markup: keyboard,
       reply_parameters: ctx.message ? { message_id: ctx.message.message_id } : undefined,
