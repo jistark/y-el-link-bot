@@ -57,12 +57,17 @@ export async function extract(url: string): Promise<Article> {
 
   let title: string | undefined;
   let date: string | undefined;
+  let jsonLdBody: string | undefined;
 
   if (jsonLdMatch) {
     try {
       const data = JSON.parse(jsonLdMatch[1]);
       title = data.headline;
       date = data.datePublished;
+      // Guardar articleBody del JSON-LD como fallback
+      if (data.articleBody && data.articleBody.length > 100) {
+        jsonLdBody = data.articleBody;
+      }
     } catch {
       // JSON inválido
     }
@@ -118,6 +123,11 @@ export async function extract(url: string): Promise<Article> {
     if (contentMatch) {
       contentHtml = contentMatch[1];
     }
+  }
+
+  // Fallback: usar articleBody del JSON-LD si el HTML parsing no encontró contenido
+  if (!contentHtml && jsonLdBody) {
+    contentHtml = jsonLdBody;
   }
 
   if (!contentHtml) {
