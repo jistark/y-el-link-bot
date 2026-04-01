@@ -347,15 +347,36 @@ export async function startRssPoller(api: Api): Promise<void> {
     timestamp: new Date().toISOString(),
   }));
 
-  // First poll immediately
-  try {
-    await pollOnce(api, chatId, posted);
-  } catch (err: any) {
-    console.error(JSON.stringify({
-      event: 'rss_initial_poll_error',
-      error: err?.message || String(err),
-      timestamp: new Date().toISOString(),
-    }));
+  // On cold start (no persisted GUIDs), seed with current feed to avoid reposting
+  if (posted.size === 0) {
+    try {
+      const xml = await fetchRssFeed();
+      const items = parseItems(xml);
+      for (const item of items) posted.add(item.guid);
+      await savePostedGuids(posted);
+      console.log(JSON.stringify({
+        event: 'rss_seeded',
+        count: items.length,
+        timestamp: new Date().toISOString(),
+      }));
+    } catch (err: any) {
+      console.error(JSON.stringify({
+        event: 'rss_seed_error',
+        error: err?.message || String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  } else {
+    // Normal first poll
+    try {
+      await pollOnce(api, chatId, posted);
+    } catch (err: any) {
+      console.error(JSON.stringify({
+        event: 'rss_initial_poll_error',
+        error: err?.message || String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    }
   }
 
   scheduleNext(api, chatId, posted);
