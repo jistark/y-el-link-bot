@@ -39,6 +39,18 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   wired: 'wrd',
   '404media': '404m',
   bloomberg: 'bbg',
+  adnradio: 'adn',
+  elfiltrador: 'elf',
+  theclinic: 'tcl',
+  exante: 'exa',
+  interferencia: 'inf',
+  t13: 't13',
+  '13cl': '13c',
+  tvn: 'tvn',
+  '24horas': '24h',
+  mega: 'mga',
+  meganoticias: 'mgn',
+  chilevision: 'chv',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -441,6 +453,19 @@ function getSourceName(source: Article['source']): string {
     theatlantic: 'The Atlantic',
     wired: 'Wired',
     '404media': '404 Media',
+    bloomberg: 'Bloomberg',
+    adnradio: 'Radio ADN',
+    elfiltrador: 'El Filtrador',
+    theclinic: 'The Clinic',
+    exante: 'Ex-Ante',
+    interferencia: 'Interferencia',
+    t13: 'T13',
+    '13cl': '13.cl',
+    tvn: 'TVN',
+    '24horas': '24 Horas',
+    mega: 'Mega',
+    meganoticias: 'Meganoticias',
+    chilevision: 'Chilevisión',
   };
   return names[source];
 }
