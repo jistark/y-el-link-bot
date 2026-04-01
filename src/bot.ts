@@ -31,6 +31,9 @@ interface PendingRequest {
 
 const pending = new Map<string, PendingRequest>();
 
+// Mapa de Telegraph path → URL original (para regenerar artículos)
+const pathToUrl = new Map<string, string>();
+
 // Limpieza periódica del cache (cada hora)
 setInterval(() => {
   const now = Date.now();
@@ -106,24 +109,38 @@ function createUndoKeyboard(): InlineKeyboard {
     .text('⏪ Cancelar', 'undo');
 }
 
+function getUrlForPath(path: string): string | null {
+  if (pathToUrl.has(path)) return pathToUrl.get(path)!;
+  for (const [url, entry] of cache) {
+    if (entry.result.path === path) return url;
+  }
+  return null;
+}
+
 function createActionKeyboard(telegraphPath: string, userId: number, originalUrl: string): InlineKeyboard {
+  // Guardar mapping path → URL para poder regenerar
+  pathToUrl.set(telegraphPath, originalUrl);
+
   const archiveUrl = `https://archive.ph/?q=${encodeURIComponent(originalUrl)}`;
   const twitterUrl = `https://twitter.com/search?q=${encodeURIComponent(originalUrl)}`;
 
-  // Embeber path, userId y timestamp en callback data (sobrevive reinicios del bot)
-  // Formato: "del:path:userId:timestamp" - timestamp en base36 para ahorrar bytes
   const ts = Math.floor(Date.now() / 1000).toString(36);
   const deleteData = `del:${telegraphPath}:${userId}:${ts}`;
+  const regenData = `regen:${telegraphPath}:${userId}`;
 
-  // Telegram limita callback_data a 64 bytes - fallback sin timestamp si excede
-  const callbackData = deleteData.length <= 64
+  // Telegram limita callback_data a 64 bytes
+  const delCallback = deleteData.length <= 64
     ? deleteData
     : `del:${telegraphPath}:${userId}:0`;
+  const regenCallback = regenData.length <= 64
+    ? regenData
+    : `regen:${telegraphPath}:0`;
 
   return new InlineKeyboard()
-    .text('🗑️ Borrar', callbackData)
-    .url('📦 Archive', archiveUrl)
-    .url('🐦 Twitter', twitterUrl);
+    .text('🗑️', delCallback)
+    .text('🔄', regenCallback)
+    .url('📦', archiveUrl)
+    .url('🐦', twitterUrl);
 }
 
 // Canales de TV para rating Zapping
@@ -716,6 +733,7 @@ export function createBot(token: string): Bot {
 
       // "Borrar" la página Telegraph (vaciarla) e invalidar cache
       await deletePage(telegraphPath);
+      pathToUrl.delete(telegraphPath);
       for (const [cachedUrl, entry] of cache) {
         if (entry.result.path === telegraphPath) { cache.delete(cachedUrl); break; }
       }
@@ -751,11 +769,94 @@ export function createBot(token: string): Bot {
       }
 
       await deletePage(telegraphPath);
+      pathToUrl.delete(telegraphPath);
       for (const [cachedUrl, entry] of cache) {
         if (entry.result.path === telegraphPath) { cache.delete(cachedUrl); break; }
       }
       try { await ctx.deleteMessage(); } catch { await ctx.editMessageText('🗑️ Eliminado'); }
       await ctx.answerCallbackQuery({ text: 'Eliminado' });
+      return;
+    }
+
+    // Regenerar artículo Telegraph
+    if (data.startsWith('regen:')) {
+      const parts = data.slice(6).split(':');
+      const ownerId = parseInt(parts.pop()!, 10);
+      const telegraphPath = parts.join(':');
+      const userId = ctx.from?.id;
+
+      // Solo owner o admin
+      let canRegen = userId === ownerId;
+      if (!canRegen && ctx.chat && userId) {
+        try {
+          const member = await ctx.api.getChatMember(ctx.chat.id, userId);
+          canRegen = ['creator', 'administrator'].includes(member.status);
+        } catch {}
+      }
+      if (!canRegen) {
+        await ctx.answerCallbackQuery({ text: 'Solo el autor o admins pueden regenerar', show_alert: true });
+        return;
+      }
+
+      // Recuperar URL original
+      const originalUrl = getUrlForPath(telegraphPath);
+      if (!originalUrl) {
+        await ctx.answerCallbackQuery({ text: 'No se puede regenerar. Postea la URL de nuevo.', show_alert: true });
+        return;
+      }
+
+      await ctx.answerCallbackQuery({ text: '🔄 Regenerando...' });
+
+      try {
+        // Editar mensaje a "procesando"
+        const chatId = ctx.callbackQuery.message?.chat.id;
+        const messageId = ctx.callbackQuery.message?.message_id;
+        if (chatId && messageId) {
+          await ctx.api.editMessageText(chatId, messageId, '⏳ Regenerando artículo...');
+        }
+
+        // Re-extraer y crear nueva página
+        const article = await Promise.race([
+          extractArticle(originalUrl),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), 30_000)
+          ),
+        ]);
+        const result = await createPage(article);
+
+        // Invalidar cache vieja, guardar nueva
+        cache.delete(originalUrl);
+        pathToUrl.delete(telegraphPath);
+        cache.set(originalUrl, { result, expires: Date.now() + TTL });
+
+        // Reconstruir mensaje y keyboard
+        const newKeyboard = createActionKeyboard(result.path, ownerId, originalUrl);
+        const mention = ctx.from?.username ? `@${ctx.from.username}` :
+          `<a href="tg://user?id=${ctx.from?.id}">${escapeHtml(ctx.from?.first_name || '')}</a>`;
+        const messageText = `${mention} compartió:\n${result.url}`;
+
+        if (chatId && messageId) {
+          await ctx.api.editMessageText(chatId, messageId, messageText, {
+            parse_mode: 'HTML',
+            reply_markup: newKeyboard,
+            link_preview_options: { is_disabled: false },
+          });
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: 'regen_error',
+          url: originalUrl,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }));
+        const chatId = ctx.callbackQuery.message?.chat.id;
+        const messageId = ctx.callbackQuery.message?.message_id;
+        if (chatId && messageId) {
+          try {
+            await ctx.api.editMessageText(chatId, messageId, '❌ No se pudo regenerar el artículo.');
+          } catch {}
+        }
+      }
       return;
     }
 
