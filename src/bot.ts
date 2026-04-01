@@ -663,10 +663,43 @@ export function createBot(token: string): Bot {
       return;
     }
 
-    // Caso especial: Chile no clasificó
+    // Easter eggs
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const replyOpts = { reply_to_message_id: ctx.message!.message_id };
+
+    // Chile no clasificó
     if (argNorm === 'chile' || argNorm === 'la roja') {
-      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/', { reply_to_message_id: ctx.message!.message_id });
+      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/', replyOpts);
+      return;
+    }
+
+    // URSS
+    if (argNorm === 'urss' || argNorm === 'ussr' || argNorm === 'union sovietica' || argNorm === 'soviet union') {
+      await ctx.reply('https://www.youtube.com/watch?v=TFS316SzGFQ', replyOpts);
+      return;
+    }
+
+    // Corea del Norte
+    if (argNorm === 'norcorea' || argNorm === 'corea del norte' || argNorm === 'north korea') {
+      await ctx.replyWithPhoto('https://www.chicagotribune.com/wp-content/uploads/2026/02/NORCOREA-CONGRESO_DEL_PARTIDO_09229.jpg', replyOpts);
+      return;
+    }
+
+    // Profesor de artes
+    if (argNorm === 'artes' || argNorm === 'profesor artes' || argNorm === 'profesor de artes') {
+      await ctx.replyWithPhoto('https://pbs.twimg.com/media/Glze3JXWkAACJTI.jpg', replyOpts);
+      return;
+    }
+
+    // El pelao de brazzers / Johnny Sins
+    if (/\b(pelao|pelado)\b/.test(argNorm) || /\bbrazzers\b/.test(argNorm) || /\bjohnny\s*sins?\b/.test(argNorm)) {
+      await ctx.replyWithPhoto('https://ih1.redbubble.net/image.2382029195.6138/flat,750x,075,f-pad,750x1000,f8f8f8.jpg', replyOpts);
+      return;
+    }
+
+    // Groserías
+    if (/^(pene|pito|pichula|tula)$/.test(argNorm)) {
+      await ctx.reply('\u{1F90F}', replyOpts);
       return;
     }
 
