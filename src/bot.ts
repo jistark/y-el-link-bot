@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, Context, InputFile } from 'grammy';
+import { Bot, InlineKeyboard, Context } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
@@ -691,22 +691,19 @@ export function createBot(token: string): Bot {
 
     // Corea del Norte
     if (argNorm === 'norcorea' || argNorm === 'corea del norte' || argNorm === 'north korea') {
-      const buf = await fetch('https://www.chicagotribune.com/wp-content/uploads/2026/02/NORCOREA-CONGRESO_DEL_PARTIDO_09229.jpg').then(r => r.arrayBuffer());
-      await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'norcorea.jpg'), replyOpts);
+      await ctx.replyWithPhoto('https://i.imgur.com/B7yiPD1.jpeg', replyOpts);
       return;
     }
 
     // Profesor de artes
     if (argNorm === 'artes' || argNorm === 'profesor artes' || argNorm === 'profesor de artes') {
-      const buf = await fetch('https://pbs.twimg.com/media/Glze3JXWkAACJTI.jpg').then(r => r.arrayBuffer());
-      await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'artes.jpg'), replyOpts);
+      await ctx.replyWithPhoto('https://i.imgur.com/klS1PxD.jpeg', replyOpts);
       return;
     }
 
     // El pelao de brazzers / Johnny Sins
     if (/\b(pelao|pelado)\b/.test(argNorm) || /\bbrazzers\b/.test(argNorm) || /\bjohnny\s*sins?\b/.test(argNorm)) {
-      const buf = await fetch('https://ih1.redbubble.net/image.2382029195.6138/flat,750x,075,f-pad,750x1000,f8f8f8.jpg').then(r => r.arrayBuffer());
-      await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'pelao.jpg'), replyOpts);
+      await ctx.replyWithPhoto('https://i.imgur.com/Ys17mHl.jpeg', replyOpts);
       return;
     }
 
