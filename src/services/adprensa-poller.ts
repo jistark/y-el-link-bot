@@ -244,12 +244,14 @@ export async function startAdprensaPoller(api: Api): Promise<void> {
     timestamp: new Date().toISOString(),
   }));
 
-  // On cold start, seed with current feed to avoid reposting
+  // On cold start, seed non-Pauta items to avoid reposting; let Pauta items through
   if (posted.size === 0) {
     try {
       const xml = await fetchRssFeed();
       const items = parseItems(xml);
-      for (const item of items) posted.add(item.guid);
+      for (const item of items) {
+        if (!item.categories.includes('Pauta')) posted.add(item.guid);
+      }
       await savePostedGuids(posted);
       console.log(JSON.stringify({
         event: 'adprensa_seeded',
@@ -263,7 +265,10 @@ export async function startAdprensaPoller(api: Api): Promise<void> {
         timestamp: new Date().toISOString(),
       }));
     }
-  } else {
+  }
+
+  // First poll (on cold start, this posts the Pauta items not seeded)
+  {
     try {
       await pollOnce(api, chatId, posted);
     } catch (err: any) {
