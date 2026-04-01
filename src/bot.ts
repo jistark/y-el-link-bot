@@ -630,40 +630,40 @@ export function createBot(token: string): Bot {
     if (!arg || arg === 'hoy') {
       const countdown = getCountdown();
       if (countdown) {
-        await ctx.reply(countdown, { parse_mode: 'HTML' });
+        await ctx.reply(countdown, { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
         return;
       }
       const today = getChileDate();
       const matches = getMatchesForDate(today);
-      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
     if (arg === 'mañana' || arg === 'manana') {
       const tomorrow = getChileDate(1);
       const matches = getMatchesForDate(tomorrow);
-      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
     if (arg === 'semana') {
       const today = getChileDate();
       const matches = getMatchesForWeek(today);
-      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
     // Caso especial: Chile no clasificó
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (argNorm === 'chile' || argNorm === 'la roja') {
-      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/');
+      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/', { reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
     // Buscar por equipo
     const result = getMatchesForTeam(arg);
     if (result) {
-      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
@@ -671,7 +671,7 @@ export function createBot(token: string): Bot {
     await ctx.reply(
       `\u26BD <b>Mundial 2026</b>\n\n"${escapeHtml(arg)}" no participa en el Mundial 2026.\n\n` +
       '<i>Prueba con /mundial argentina, /mundial brasil, etc.</i>',
-      { parse_mode: 'HTML' }
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
     );
   });
 
