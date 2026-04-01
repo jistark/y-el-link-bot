@@ -31,7 +31,7 @@ import * as wired from './wired.js';
 const URL_PATTERNS = {
   elmercurio: /(?:beta|digital|www)?\.?elmercurio\.com/,
   lasegunda: /lasegunda\.com/,
-  latercera: /latercera\.com/,
+  latercera: /latercera\.com|lacuarta\.com/,
   df: /df\.cl/,
   theverge: /theverge\.com/,
   lun: /lun\.com/,
