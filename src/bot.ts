@@ -663,6 +663,16 @@ export function createBot(token: string): Bot {
       return;
     }
 
+    if (arg === 'equipos') {
+      const teams = getAllTeams();
+      const teamList = teams.map(t => `• ${t}`).join('\n');
+      await ctx.reply(
+        `\u26BD <b>Mundial 2026 — Equipos participantes</b>\n\n${teamList}`,
+        { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
+      );
+      return;
+    }
+
     // Easter eggs
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const replyOpts = { reply_to_message_id: ctx.message!.message_id };
@@ -713,16 +723,11 @@ export function createBot(token: string): Bot {
       return;
     }
 
-    // Equipo no encontrado — mostrar equipos disponibles
-    const teams = getAllTeams();
-    const teamList = teams.map(t => `• ${t}`).join('\n');
-    const notFoundHeader = arg
-      ? `"${escapeHtml(arg)}" no participa en el Mundial 2026.`
-      : 'No entendí la consulta.';
+    // Equipo no encontrado
+    const displayArg = arg || rawArg.slice(0, 50);
     await ctx.reply(
-      `\u26BD <b>Mundial 2026</b>\n\n${notFoundHeader}\n\n` +
-      `<b>Equipos participantes:</b>\n${teamList}\n\n` +
-      '<i>/mundial [equipo] — /mundial hoy — /mundial semana</i>',
+      `\u26BD\u274C <b>${escapeHtml(displayArg)}</b> NO va al mundial 2026\n\n` +
+      'Usa /mundial equipos para ver quiénes sí van',
       { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
     );
   });
