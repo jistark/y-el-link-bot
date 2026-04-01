@@ -1,5 +1,45 @@
 import type { Article } from '../types.js';
 
+/**
+ * Remove all div blocks with a specific class by tracking div nesting depth.
+ * This avoids the regex [\s\S]*?</div></div></div> pattern which can cross
+ * between multiple blocks and eat content in between.
+ */
+function removeDivBlocks(html: string, className: string): string {
+  const marker = `<div class="${className}"`;
+  let result = html;
+  let idx = result.indexOf(marker);
+  while (idx !== -1) {
+    // Find the end of this div block by counting nested divs
+    let depth = 0;
+    let pos = idx;
+    let endPos = -1;
+    while (pos < result.length) {
+      const nextOpen = result.indexOf('<div', pos + 1);
+      const nextClose = result.indexOf('</div>', pos + 1);
+      if (nextClose === -1) break;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth++;
+        pos = nextOpen;
+      } else {
+        if (depth === 0) {
+          endPos = nextClose + '</div>'.length;
+          break;
+        }
+        depth--;
+        pos = nextClose;
+      }
+    }
+    if (endPos > idx) {
+      result = result.slice(0, idx) + result.slice(endPos);
+    } else {
+      break; // malformed HTML, bail
+    }
+    idx = result.indexOf(marker);
+  }
+  return result;
+}
+
 export async function extract(url: string): Promise<Article> {
   const response = await fetch(url);
 
@@ -85,13 +125,15 @@ export async function extract(url: string): Promise<Article> {
   contentHtml = contentHtml.replace(/<figure class="wp-block-embed[\s\S]*?<\/figure>/gi, '');
   contentHtml = contentHtml.replace(/<input[^>]*>/gi, '');
 
-  // BioBio específico
-  contentHtml = contentHtml.replace(/<div class="lee-tambien-bbcl">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi, '');
-  contentHtml = contentHtml.replace(/<div class="ads-[^"]*"[\s\S]*?<\/div>/gi, '');
+  // BioBio específico: remover bloques "lee también" sin comerse contenido intermedio
+  // El regex lazy [\s\S]*?</div></div></div> puede cruzar entre múltiples bloques lee-tambien,
+  // así que removemos cada uno individualmente buscando su cierre por conteo de divs
+  contentHtml = removeDivBlocks(contentHtml, 'lee-tambien-bbcl');
+  contentHtml = contentHtml.replace(/<div class="ads-[^"]*"[^>]*>\s*<\/div>/gi, '');
 
   // Pagina7 específico
-  contentHtml = contentHtml.replace(/<div class="lee-tambien-block[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi, '');
-  contentHtml = contentHtml.replace(/<div class="related-box[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi, '');
+  contentHtml = removeDivBlocks(contentHtml, 'lee-tambien-block');
+  contentHtml = removeDivBlocks(contentHtml, 'related-box');
 
   // Convertir destacadores a énfasis
   contentHtml = contentHtml.replace(/<span class="destacador">([^<]+)<\/span>/gi, '<em>$1</em>');
