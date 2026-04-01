@@ -653,6 +653,18 @@ export function createBot(token: string): Bot {
       return;
     }
 
+    // Caso especial: Chile no clasificó
+    const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (argNorm === 'chile' || argNorm === 'la roja') {
+      await ctx.reply(
+        '\u26BD <b>Mundial 2026</b> \u2014 Chile\n\n' +
+        'Chile no clasificó al Mundial 2026.\n\n' +
+        '<a href="https://www.instagram.com/p/BZs-WG7h8JL/">Pero vea la reacción de Don Francisco a nuestro último gol mundialero</a>',
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
     // Buscar por equipo
     const result = getMatchesForTeam(arg);
     if (result) {
@@ -660,13 +672,10 @@ export function createBot(token: string): Bot {
       return;
     }
 
+    // Equipo no encontrado en el torneo
     await ctx.reply(
-      '\u26BD <b>Mundial 2026</b> — Uso:\n\n' +
-      '/mundial — Partidos de hoy (o countdown)\n' +
-      '/mundial mañana — Partidos de mañana\n' +
-      '/mundial semana — Partidos de la semana\n' +
-      '/mundial <i>equipo</i> — Partidos de un equipo\n\n' +
-      'Ej: /mundial chile, /mundial argentina, /mundial brasil',
+      `\u26BD <b>Mundial 2026</b>\n\n"${escapeHtml(arg)}" no participa en el Mundial 2026.\n\n` +
+      '<i>Prueba con /mundial argentina, /mundial brasil, etc.</i>',
       { parse_mode: 'HTML' }
     );
   });
