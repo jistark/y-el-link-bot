@@ -4,7 +4,7 @@ import { createPage, deletePage, type CreatePageResult } from './formatters/tele
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import {
   getChileDate, getChileTimeNow, getMatchesForDate, getMatchesForWeek,
-  getMatchesForTeam, getMatchesAtTime, getCountdown,
+  getMatchesForTeam, getMatchesAtTime, getCountdown, getAllTeams,
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
@@ -624,54 +624,103 @@ export function createBot(token: string): Bot {
 
   // Comando /mundial - Partidos del Mundial FIFA 2026
   bot.command(['mundial', 'wc'], async (ctx) => {
-    const arg = ctx.match?.trim().toLowerCase() || '';
+    // Sanitizar input: strip HTML tags, invisible Unicode, y limitar largo
+    const rawArg = ctx.match?.trim() || '';
+    const arg = rawArg
+      .replace(/<[^>]*>/g, '')                    // Strip HTML tags
+      .replace(/[^\p{L}\p{N}\s'-]/gu, '')         // Solo letras, números, espacios, guiones, apóstrofes
+      .trim()
+      .toLowerCase()
+      .slice(0, 50);                              // Limitar largo
+
+    // Si el input original tenía contenido pero el sanitizado está vacío → basura
+    const hadInput = rawArg.length > 0;
 
     // Sin argumento o "hoy": countdown o partidos de hoy
-    if (!arg || arg === 'hoy') {
+    if ((!arg && !hadInput) || arg === 'hoy') {
       const countdown = getCountdown();
       if (countdown) {
-        await ctx.reply(countdown, { parse_mode: 'HTML' });
+        await ctx.reply(countdown, { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
         return;
       }
       const today = getChileDate();
       const matches = getMatchesForDate(today);
-      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
     if (arg === 'mañana' || arg === 'manana') {
       const tomorrow = getChileDate(1);
       const matches = getMatchesForDate(tomorrow);
-      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
     if (arg === 'semana') {
       const today = getChileDate();
       const matches = getMatchesForWeek(today);
-      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
-    // Caso especial: Chile no clasificó
+    // Easter eggs
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const replyOpts = { reply_to_message_id: ctx.message!.message_id };
+
+    // Chile no clasificó
     if (argNorm === 'chile' || argNorm === 'la roja') {
-      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/');
+      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/', replyOpts);
+      return;
+    }
+
+    // URSS
+    if (argNorm === 'urss' || argNorm === 'ussr' || argNorm === 'union sovietica' || argNorm === 'soviet union') {
+      await ctx.reply('https://www.youtube.com/watch?v=TFS316SzGFQ', replyOpts);
+      return;
+    }
+
+    // Corea del Norte
+    if (argNorm === 'norcorea' || argNorm === 'corea del norte' || argNorm === 'north korea') {
+      await ctx.replyWithPhoto('https://www.chicagotribune.com/wp-content/uploads/2026/02/NORCOREA-CONGRESO_DEL_PARTIDO_09229.jpg', replyOpts);
+      return;
+    }
+
+    // Profesor de artes
+    if (argNorm === 'artes' || argNorm === 'profesor artes' || argNorm === 'profesor de artes') {
+      await ctx.replyWithPhoto('https://pbs.twimg.com/media/Glze3JXWkAACJTI.jpg', replyOpts);
+      return;
+    }
+
+    // El pelao de brazzers / Johnny Sins
+    if (/\b(pelao|pelado)\b/.test(argNorm) || /\bbrazzers\b/.test(argNorm) || /\bjohnny\s*sins?\b/.test(argNorm)) {
+      await ctx.replyWithPhoto('https://ih1.redbubble.net/image.2382029195.6138/flat,750x,075,f-pad,750x1000,f8f8f8.jpg', replyOpts);
+      return;
+    }
+
+    // Groserías
+    if (/^(pene|pito|pichula|tula)$/.test(argNorm)) {
+      await ctx.reply('\u{1F90F}', replyOpts);
       return;
     }
 
     // Buscar por equipo
     const result = getMatchesForTeam(arg);
     if (result) {
-      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML' });
+      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id });
       return;
     }
 
-    // Equipo no encontrado en el torneo
+    // Equipo no encontrado — mostrar equipos disponibles
+    const teams = getAllTeams();
+    const teamList = teams.map(t => `• ${t}`).join('\n');
+    const notFoundHeader = arg
+      ? `"${escapeHtml(arg)}" no participa en el Mundial 2026.`
+      : 'No entendí la consulta.';
     await ctx.reply(
-      `\u26BD <b>Mundial 2026</b>\n\n"${escapeHtml(arg)}" no participa en el Mundial 2026.\n\n` +
-      '<i>Prueba con /mundial argentina, /mundial brasil, etc.</i>',
-      { parse_mode: 'HTML' }
+      `\u26BD <b>Mundial 2026</b>\n\n${notFoundHeader}\n\n` +
+      `<b>Equipos participantes:</b>\n${teamList}\n\n` +
+      '<i>/mundial [equipo] — /mundial hoy — /mundial semana</i>',
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id }
     );
   });
 
