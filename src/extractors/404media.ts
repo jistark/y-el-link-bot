@@ -48,6 +48,10 @@ export async function extract(url: string): Promise<Article> {
   // Remove Outpost paywall divs
   body = body.replace(/<div[^>]*class="[^"]*outpost-pub-container[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '');
 
+  // Remove 404 Media newsletter CTA blocks (🌘 emoji + Subscribe paragraphs)
+  body = body.replace(/<p>\s*🌘\s*<\/p>/g, '');
+  body = body.replace(/<p>[\s\S]*?404media\.co\/signup\/[\s\S]*?<\/p>/gi, '');
+
   // Remove empty paragraphs
   body = body.replace(/<p>\s*<\/p>/g, '');
 

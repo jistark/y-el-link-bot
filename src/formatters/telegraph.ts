@@ -94,17 +94,23 @@ function decodeEntities(text: string): string {
   return decoded;
 }
 
+// Parsea children recursivamente: si tiene HTML, parsea; si no, decodifica texto
+function parseChildren(innerHtml: string): TelegraphNode[] {
+  return innerHtml.includes('<') ? parseInline(innerHtml) : [decodeEntities(innerHtml)];
+}
+
 // Parsea contenido inline, preservando negritas, itálicas, links y marks
 function parseInline(html: string): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
   let text = html;
 
-  // Procesar:
+  // Procesar (con [^>]* para aceptar atributos como style, class):
   // - negritas <b>...</b> y <strong>...</strong>
   // - itálicas <i>...</i> y <em>...</em>
+  // - subrayado <u>...</u> → pass-through (Telegraph no soporta <u>)
   // - destacados <mark>...</mark> → itálica
   // - links <a href="...">...</a>
-  const regex = /<(b|strong)>(.+?)<\/\1>|<(i|em)>(.+?)<\/\3>|<mark[^>]*>(.+?)<\/mark>|<a\s+href="([^"]+)"[^>]*>(.+?)<\/a>/gi;
+  const regex = /<(b|strong)[^>]*>(.+?)<\/\1>|<(i|em)[^>]*>(.+?)<\/\3>|<u[^>]*>(.+?)<\/u>|<mark[^>]*>(.+?)<\/mark>|<a\s+href="([^"]+)"[^>]*>(.+?)<\/a>/gi;
   let lastIndex = 0;
   let match;
 
@@ -119,26 +125,29 @@ function parseInline(html: string): TelegraphNode[] {
       // Es negrita <b> o <strong>
       nodes.push({
         tag: 'b',
-        children: [decodeEntities(match[2])],
+        children: parseChildren(match[2]),
       });
     } else if (match[3]) {
       // Es itálica <i> o <em>
       nodes.push({
         tag: 'i',
-        children: [decodeEntities(match[4])],
+        children: parseChildren(match[4]),
       });
     } else if (match[5]) {
+      // Es <u> → pass-through sin tag (Telegraph no soporta underline)
+      nodes.push(...parseChildren(match[5]));
+    } else if (match[6]) {
       // Es mark (destacado) → convertir a itálica
       nodes.push({
         tag: 'i',
-        children: [decodeEntities(match[5])],
+        children: parseChildren(match[6]),
       });
-    } else if (match[6]) {
+    } else if (match[7]) {
       // Es link
       nodes.push({
         tag: 'a',
-        attrs: { href: match[6] },
-        children: [decodeEntities(match[7])],
+        attrs: { href: match[7] },
+        children: parseChildren(match[8]),
       });
     }
 
