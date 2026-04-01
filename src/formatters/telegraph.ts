@@ -53,6 +53,7 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   chilevision: 'chv',
   ojoalatele: 'ojt',
   adprensa: 'adp',
+  lahora: 'lhr',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -483,6 +484,7 @@ function getSourceName(source: Article['source']): string {
     chilevision: 'Chilevisión',
     ojoalatele: 'Ojo a la Tele',
     adprensa: 'AdPrensa',
+    lahora: 'La Hora',
   };
   return names[source];
 }
