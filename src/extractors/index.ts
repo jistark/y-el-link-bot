@@ -18,6 +18,7 @@ import * as latercera from './latercera.js';
 import * as lun from './lun.js';
 import * as mega from './mega.js';
 import * as nyt from './nyt.js';
+import * as ojoalatele from './ojoalatele.js';
 // reuters requires browser-level bypass
 import * as t13 from './t13.js';
 import * as theatlantic from './theatlantic.js';
@@ -53,6 +54,7 @@ const URL_PATTERNS = {
   tvn: /^(?:www\.)?(?:tvn|24horas)\.cl$/,
   mega: /^(?:www\.)?(?:meganoticias|mega)\.cl$/,
   chilevision: /chilevision\.cl/,
+  ojoalatele: /ojoalatele\.com/,
   // substack and beehiiv deprecated - extraction unreliable
   // reuters requires browser-level bypass
 } as const;
@@ -152,6 +154,9 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'chilevision':
       return chilevision.extract(url);
+
+    case 'ojoalatele':
+      return ojoalatele.extract(url);
 
     default:
       throw new Error('URL no corresponde a un diario soportado');
