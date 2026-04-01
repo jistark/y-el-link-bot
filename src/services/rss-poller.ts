@@ -235,6 +235,36 @@ function formatMessage(item: RssItem, media: MediaLinks): string {
   return lines.join('\n');
 }
 
+// --- Telegram helpers ---
+
+const ITEM_DELAY = 3_000; // 3s between items to avoid rate limits
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
+function getRetryAfter(err: any): number | null {
+  const match = err?.message?.match(/retry after (\d+)/i);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+async function sendWithRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: any) {
+    const retryAfter = getRetryAfter(err);
+    if (retryAfter) {
+      console.log(JSON.stringify({
+        event: 'rss_rate_limited',
+        retryAfter,
+        label,
+        timestamp: new Date().toISOString(),
+      }));
+      await sleep((retryAfter + 1) * 1000);
+      return await fn();
+    }
+    throw err;
+  }
+}
+
 // --- Core ---
 
 async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<void> {
@@ -261,8 +291,11 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
     const message = formatMessage(item, media);
 
     try {
-      // Send text message first
-      await api.sendMessage(chatId, message, { parse_mode: 'HTML', disable_notification: true });
+      // Send text message
+      await sendWithRetry(
+        () => api.sendMessage(chatId, message, { parse_mode: 'HTML', disable_notification: true }),
+        'sendMessage',
+      );
 
       // Download and send photos from WeTransfer
       if (media.fotosLink && media.clave) {
@@ -274,7 +307,10 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
               media: new InputFile(photo.buf, photo.name),
               ...(i === 0 ? { caption: escapeHtml(item.title), parse_mode: 'HTML' as const } : {}),
             }));
-            await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true });
+            await sendWithRetry(
+              () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
+              'sendMediaGroup',
+            );
           }
         } catch (err: any) {
           console.error(JSON.stringify({
@@ -283,12 +319,14 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
             error: err?.message || String(err),
             timestamp: new Date().toISOString(),
           }));
-          // Text message was sent, photos failed — not fatal
         }
       }
 
       posted.add(item.guid);
       await savePostedGuids(posted);
+
+      // Pace between items to avoid Telegram rate limits
+      await sleep(ITEM_DELAY);
     } catch (err: any) {
       console.error(JSON.stringify({
         event: 'rss_send_error',
@@ -296,6 +334,8 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
         error: err?.message || String(err),
         timestamp: new Date().toISOString(),
       }));
+      // On persistent failure, still pace before next item
+      await sleep(ITEM_DELAY);
     }
   }
 }
