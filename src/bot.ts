@@ -8,6 +8,7 @@ import {
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
+import { startRssPoller } from './services/rss-poller.js';
 import { readFile, writeFile } from 'fs/promises';
 
 // Safe wrapper: reintenta sin message_thread_id si Telegram rechaza el thread
@@ -1101,6 +1102,9 @@ export function createBot(token: string): Bot {
 
     await ctx.answerCallbackQuery();
   });
+
+  // RSS poller for Bancomedia channel
+  startRssPoller(bot.api);
 
   return bot;
 }
