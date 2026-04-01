@@ -513,7 +513,10 @@ export function createBot(token: string): Bot {
 
     try {
       const result = await getHoroscopo(signo);
-      await ctx.reply(result, { parse_mode: 'HTML' });
+      await ctx.reply(result, {
+        parse_mode: 'HTML',
+        reply_parameters: { message_id: ctx.message!.message_id },
+      });
     } catch (error) {
       console.error(JSON.stringify({
         event: 'horoscopo_error',
