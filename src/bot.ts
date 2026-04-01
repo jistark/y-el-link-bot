@@ -656,12 +656,7 @@ export function createBot(token: string): Bot {
     // Caso especial: Chile no clasificó
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (argNorm === 'chile' || argNorm === 'la roja') {
-      await ctx.reply(
-        '\u26BD <b>Mundial 2026</b> \u2014 Chile\n\n' +
-        'Chile no clasificó al Mundial 2026.\n\n' +
-        '<a href="https://www.instagram.com/p/BZs-WG7h8JL/">Pero vea la reacción de Don Francisco a nuestro último gol mundialero</a>',
-        { parse_mode: 'HTML' }
-      );
+      await ctx.reply('https://www.zzinstagram.com/p/BZs-WG7h8JL/');
       return;
     }
 
