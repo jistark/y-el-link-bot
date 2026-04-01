@@ -97,7 +97,11 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // --- Mundial 2026: config de notificaciones ---
-const MUNDIAL_CONFIG_PATH = new URL('../data/mundial-config.json', import.meta.url).pathname;
+import { join } from 'path';
+import { mkdirSync } from 'fs';
+
+const MUNDIAL_CONFIG_DIR = join(process.cwd(), 'data');
+const MUNDIAL_CONFIG_PATH = join(MUNDIAL_CONFIG_DIR, 'mundial-config.json');
 let mundialConfig: { chatId: number; topicId: number } | null = null;
 
 async function loadMundialConfig() {
@@ -110,6 +114,7 @@ loadMundialConfig();
 
 async function saveMundialConfig(chatId: number, topicId: number) {
   mundialConfig = { chatId, topicId };
+  try { mkdirSync(MUNDIAL_CONFIG_DIR, { recursive: true }); } catch { /* ok */ }
   await writeFile(MUNDIAL_CONFIG_PATH, JSON.stringify(mundialConfig), 'utf-8');
 }
 
