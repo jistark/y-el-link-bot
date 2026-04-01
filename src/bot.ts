@@ -132,11 +132,20 @@ function createUndoKeyboard(): InlineKeyboard {
     .text('⏪ Cancelar', 'undo');
 }
 
-function getUrlForPath(path: string): string | null {
+async function getUrlForPath(path: string): Promise<string | null> {
   if (pathToUrl.has(path)) return pathToUrl.get(path)!;
   for (const [url, entry] of cache) {
     if (entry.result.path === path) return url;
   }
+  // Fallback: leer author_url desde Telegraph (sobrevive redeploys)
+  try {
+    const res = await fetch(`https://api.telegra.ph/getPage/${path}?return_content=false`);
+    const data = await res.json();
+    if (data.ok && data.result?.author_url) {
+      pathToUrl.set(path, data.result.author_url);
+      return data.result.author_url;
+    }
+  } catch { /* ok */ }
   return null;
 }
 
@@ -830,7 +839,7 @@ export function createBot(token: string): Bot {
       }
 
       // Recuperar URL original
-      const originalUrl = getUrlForPath(telegraphPath);
+      const originalUrl = await getUrlForPath(telegraphPath);
       if (!originalUrl) {
         await ctx.answerCallbackQuery({ text: 'No se puede regenerar. Postea la URL de nuevo.', show_alert: true });
         return;
