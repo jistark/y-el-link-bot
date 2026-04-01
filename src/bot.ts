@@ -4,6 +4,29 @@ import { createPage, deletePage, type CreatePageResult } from './formatters/tele
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
 
+// Safe wrapper: reintenta sin message_thread_id si Telegram rechaza el thread
+async function safeSendMessage(
+  api: Bot['api'],
+  chatId: number,
+  text: string,
+  options?: Record<string, any>
+) {
+  try {
+    return await api.sendMessage(chatId, text, options);
+  } catch (err: any) {
+    if (err?.description?.includes('message thread not found') && options?.message_thread_id) {
+      const { message_thread_id, ...rest } = options;
+      console.log(JSON.stringify({
+        event: 'thread_fallback', action: 'sendMessage',
+        threadId: message_thread_id, chatId,
+        timestamp: new Date().toISOString(),
+      }));
+      return await api.sendMessage(chatId, text, rest);
+    }
+    throw err;
+  }
+}
+
 // Tiempo de gracia para undo antes de procesar (en ms)
 const UNDO_GRACE_PERIOD = 5000;
 // Tiempo total que el autor puede borrar después de publicar (en ms)
@@ -355,7 +378,7 @@ export function createBot(token: string): Bot {
   // Preservar topic/thread en grupos con foros: inyectar message_thread_id
   // en todas las respuestas automáticamente
   bot.use((ctx, next) => {
-    const threadId = ctx.message?.message_thread_id;
+    const threadId = ctx.msg?.message_thread_id;
     if (threadId) {
       const originalReply = ctx.reply.bind(ctx);
       ctx.reply = (text: string, other?: any) =>
@@ -546,7 +569,7 @@ export function createBot(token: string): Bot {
       const result = await getHoroscopo(signo, userName);
       await ctx.reply(result, {
         parse_mode: 'HTML',
-        reply_parameters: { message_id: ctx.message!.message_id },
+        reply_to_message_id: ctx.message!.message_id,
       });
     } catch (error) {
       console.error(JSON.stringify({
@@ -583,7 +606,7 @@ export function createBot(token: string): Bot {
       // Enviar mensaje de "procesando" con botón de undo (reply al mensaje original)
       const botMessage = await ctx.reply('⏳ Procesando artículo...', {
         reply_markup: createUndoKeyboard(),
-        reply_parameters: { message_id: ctx.message.message_id },
+        reply_to_message_id: ctx.message.message_id,
       });
 
       // Configurar timeout para procesar después del período de gracia
@@ -648,6 +671,14 @@ export function createBot(token: string): Bot {
         replyToMessageId: ctx.message.reply_to_message?.message_id,
         threadId: ctx.message.message_thread_id,
       });
+
+      console.log(JSON.stringify({
+        event: 'pending_created', url,
+        threadId: ctx.message.message_thread_id,
+        replyToMessageId: ctx.message.reply_to_message?.message_id,
+        chatId: ctx.chat.id,
+        timestamp: new Date().toISOString(),
+      }));
     }
   });
 
@@ -895,11 +926,16 @@ async function processAndReply(
       // el mensaje del usuario, luego publicar como reply al mensaje padre original
       try { await ctx.api.deleteMessage(req.chatId, req.botMessageId); } catch { /* ok */ }
       try { await ctx.api.deleteMessage(req.chatId, req.originalMessageId); } catch { /* ok */ }
-      await ctx.api.sendMessage(req.chatId, messageText, {
-        message_thread_id: req.threadId,
+
+      // Guard sameId: si reply target === topic header, omitir message_thread_id
+      const sameId = req.replyToMessageId === req.threadId;
+      const threadOpts = sameId ? {} : (req.threadId ? { message_thread_id: req.threadId } : {});
+
+      await safeSendMessage(ctx.api, req.chatId, messageText, {
+        ...threadOpts,
         parse_mode: 'HTML',
         reply_markup: keyboard,
-        reply_parameters: { message_id: req.replyToMessageId, allow_sending_without_reply: true },
+        reply_to_message_id: req.replyToMessageId,
       });
     } else {
       // Mensaje directo con link — borrar original, editar "⏳ Procesando" con resultado
@@ -911,7 +947,7 @@ async function processAndReply(
           link_preview_options: { is_disabled: false },
         });
       } catch {
-        await ctx.api.sendMessage(req.chatId, messageText, {
+        await safeSendMessage(ctx.api, req.chatId, messageText, {
           message_thread_id: req.threadId,
           parse_mode: 'HTML',
           reply_markup: keyboard,
@@ -923,7 +959,7 @@ async function processAndReply(
     await ctx.reply(messageText, {
       parse_mode: 'HTML',
       reply_markup: keyboard,
-      reply_parameters: ctx.message ? { message_id: ctx.message.message_id } : undefined,
+      reply_to_message_id: ctx.msg?.message_id,
     });
   }
 }
