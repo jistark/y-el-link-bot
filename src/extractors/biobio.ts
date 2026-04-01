@@ -99,14 +99,20 @@ export async function extract(url: string): Promise<Article> {
     }
   } else {
     // BioBioChile: buscar en banners-contenido-nota, terminar en contenedor-correcciones
-    // El lazy match anterior cortaba en el primer </div></div> (ej: lee-tambien-bbcl)
+    // La clase puede tener sufijos extra: "banners-contenido-nota-123 nota-content"
     let contentMatch = html.match(
-      /<div class="banners-contenido-nota-\d+">([\s\S]+?)<div class="contenedor-correcciones/
+      /<div[^>]*class="banners-contenido-nota-\d+[^"]*"[^>]*>([\s\S]+?)<div class="contenedor-correcciones/
     );
     // Patrón 2: sin número (noticias nuevas - dopamina, etc)
     if (!contentMatch) {
       contentMatch = html.match(
-        /<div class="contenido-nota banners-contenido-nota">([\s\S]+?)<div class="contenedor-correcciones/
+        /<div[^>]*class="contenido-nota banners-contenido-nota"[^>]*>([\s\S]+?)<div class="contenedor-correcciones/
+      );
+    }
+    // Patrón 3: BioBioTV y otros sin contenedor-correcciones — el div puede tener id antes de class
+    if (!contentMatch) {
+      contentMatch = html.match(
+        /<div[^>]*class="banners-contenido-nota-\d+[^"]*"[^>]*>([\s\S]+?)(?:<div class="section-body"|<\/article>)/
       );
     }
     if (contentMatch) {
