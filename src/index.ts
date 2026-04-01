@@ -18,6 +18,7 @@ await bot.api.setMyCommands([
   { command: 'dolar', description: 'Precio del dólar en Chile' },
   { command: 'tiayoli', description: 'Horóscopo de Yolanda Sultana' },
   { command: 'donar', description: 'Apoyar la mantención del bot' },
+  { command: 'mundial', description: 'Partidos del Mundial FIFA 2026' },
 ]);
 
 // Modo: webhook (producción) o polling (desarrollo)

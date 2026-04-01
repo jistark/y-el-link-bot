@@ -2,7 +2,13 @@ import { Bot, InlineKeyboard, Context } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
+import {
+  getChileDate, getChileTimeNow, getMatchesForDate, getMatchesForWeek,
+  getMatchesForTeam, getMatchesAtTime, getCountdown,
+  formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
+} from './commands/mundial.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
+import { readFile, writeFile } from 'fs/promises';
 
 // Safe wrapper: reintenta sin message_thread_id si Telegram rechaza el thread
 async function safeSendMessage(
@@ -89,6 +95,26 @@ setInterval(() => {
     else userRequests.set(userId, recent);
   }
 }, 5 * 60 * 1000);
+
+// --- Mundial 2026: config de notificaciones ---
+const MUNDIAL_CONFIG_PATH = new URL('../data/mundial-config.json', import.meta.url).pathname;
+let mundialConfig: { chatId: number; topicId: number } | null = null;
+
+async function loadMundialConfig() {
+  try {
+    const data = await readFile(MUNDIAL_CONFIG_PATH, 'utf-8');
+    mundialConfig = JSON.parse(data);
+  } catch { mundialConfig = null; }
+}
+loadMundialConfig();
+
+async function saveMundialConfig(chatId: number, topicId: number) {
+  mundialConfig = { chatId, topicId };
+  await writeFile(MUNDIAL_CONFIG_PATH, JSON.stringify(mundialConfig), 'utf-8');
+}
+
+// Partidos ya notificados (evita duplicados en memoria)
+const mundialNotified = new Set<string>();
 
 function extractUrls(text: string): string[] {
   const urlRegex = /https?:\/\/[^\s<>"\]]+/gi;
@@ -590,6 +616,111 @@ export function createBot(token: string): Bot {
       await ctx.reply('❌ No pude obtener el horóscopo. El sitio puede estar caído.');
     }
   });
+
+  // Comando /mundial - Partidos del Mundial FIFA 2026
+  bot.command(['mundial', 'wc'], async (ctx) => {
+    const arg = ctx.match?.trim().toLowerCase() || '';
+
+    // Sin argumento o "hoy": countdown o partidos de hoy
+    if (!arg || arg === 'hoy') {
+      const countdown = getCountdown();
+      if (countdown) {
+        await ctx.reply(countdown, { parse_mode: 'HTML' });
+        return;
+      }
+      const today = getChileDate();
+      const matches = getMatchesForDate(today);
+      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML' });
+      return;
+    }
+
+    if (arg === 'mañana' || arg === 'manana') {
+      const tomorrow = getChileDate(1);
+      const matches = getMatchesForDate(tomorrow);
+      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML' });
+      return;
+    }
+
+    if (arg === 'semana') {
+      const today = getChileDate();
+      const matches = getMatchesForWeek(today);
+      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML' });
+      return;
+    }
+
+    // Buscar por equipo
+    const result = getMatchesForTeam(arg);
+    if (result) {
+      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML' });
+      return;
+    }
+
+    await ctx.reply(
+      '\u26BD <b>Mundial 2026</b> — Uso:\n\n' +
+      '/mundial — Partidos de hoy (o countdown)\n' +
+      '/mundial mañana — Partidos de mañana\n' +
+      '/mundial semana — Partidos de la semana\n' +
+      '/mundial <i>equipo</i> — Partidos de un equipo\n\n' +
+      'Ej: /mundial chile, /mundial argentina, /mundial brasil',
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // Comando /setup_mundial - Configura el topic para notificaciones
+  bot.command('setup_mundial', async (ctx) => {
+    if (!ctx.chat || !ctx.from) return;
+
+    // Verificar que sea admin
+    try {
+      const member = await ctx.api.getChatMember(ctx.chat.id, ctx.from.id);
+      if (!['creator', 'administrator'].includes(member.status)) {
+        await ctx.reply('Solo admins pueden configurar las notificaciones del Mundial.');
+        return;
+      }
+    } catch { return; }
+
+    const topicId = ctx.msg?.message_thread_id;
+    if (!topicId) {
+      await ctx.reply('Ejecuta este comando dentro del topic donde quieres recibir las notificaciones.');
+      return;
+    }
+
+    await saveMundialConfig(ctx.chat.id, topicId);
+    await ctx.reply('\u2705 Notificaciones del Mundial configuradas para este topic.\nSe avisará 2 horas antes de cada partido.');
+  });
+
+  // Scheduler: notificaciones 2h antes de partidos del Mundial
+  setInterval(async () => {
+    if (!mundialConfig) return;
+
+    // Calcular fecha y hora Chile de aquí a 2 horas
+    const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const futureDate = twoHoursFromNow.toLocaleDateString('en-CA', { timeZone: 'America/Santiago' });
+    const futureTime = twoHoursFromNow.toLocaleTimeString('en-GB', {
+      timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit',
+    });
+
+    const matches = getMatchesAtTime(futureDate, futureTime);
+    if (matches.length === 0) return;
+
+    // Clave única para evitar duplicados
+    const key = `${futureDate}-${futureTime}`;
+    if (mundialNotified.has(key)) return;
+    mundialNotified.add(key);
+
+    try {
+      await safeSendMessage(bot.api, mundialConfig.chatId, formatNotification(matches), {
+        message_thread_id: mundialConfig.topicId,
+        parse_mode: 'HTML',
+      });
+    } catch (err) {
+      console.error(JSON.stringify({
+        event: 'mundial_notification_error',
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  }, 60_000);
 
   // Handler para mensajes con URLs
   bot.on('message:text', async (ctx) => {
