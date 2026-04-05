@@ -1,7 +1,7 @@
 import type { Article } from '../types.js';
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
@@ -26,7 +26,8 @@ export async function extract(url: string): Promise<Article> {
 
   // Call Ghost Content API
   const apiResponse = await fetch(
-    `${apiUrl}posts/slug/${slug}/?key=${key}&include=authors`
+    `${apiUrl}posts/slug/${slug}/?key=${key}&include=authors`,
+    { signal: AbortSignal.timeout(15_000) }
   );
   if (!apiResponse.ok) {
     throw new Error(`Error en Ghost API: ${apiResponse.status}`);

@@ -1,21 +1,12 @@
 import type { Article } from '../types.js';
+import { decodeEntities } from '../utils/shared.js';
 
 const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
-
-// Decodifica entidades HTML
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ');
-}
 
 export async function extract(url: string): Promise<Article> {
   const response = await fetch(url, {
     headers: { 'User-Agent': GOOGLEBOT_UA },
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

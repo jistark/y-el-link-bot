@@ -6,7 +6,7 @@ import { fetchBypass } from './fetch-bypass.js';
 // Requiere limpieza agresiva de ads intercalados
 
 async function fetchHtml(url: string): Promise<string> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }

@@ -1,4 +1,5 @@
 import type { Article, TelegraphNode, TelegraphPage } from '../types.js';
+import { decodeEntities } from '../utils/shared.js';
 
 const API_URL = 'https://api.telegra.ph';
 
@@ -17,7 +18,7 @@ const WORDS = [
   'rock', 'sand', 'wind', 'rain', 'snow', 'ice', 'fire', 'gold', 'iron',
   'book', 'page', 'word', 'line', 'note', 'song', 'bell', 'drum', 'horn',
   'door', 'wall', 'roof', 'road', 'path', 'hill', 'cave', 'pond', 'well',
-  'blue', 'red', 'gold', 'dark', 'soft', 'bold', 'calm', 'fast', 'slow',
+  'blue', 'red', 'warm', 'dark', 'soft', 'bold', 'calm', 'fast', 'slow',
   'one', 'two', 'ten', 'half', 'full', 'new', 'old', 'big', 'tiny', 'long',
 ];
 
@@ -69,32 +70,6 @@ interface CreatePageResponse {
   error?: string;
 }
 
-const HTML_ENTITIES: Record<string, string> = {
-  '&nbsp;': ' ',
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&#39;': "'",
-  '&apos;': "'",
-  '&ndash;': '–',
-  '&mdash;': '—',
-  '&hellip;': '…',
-  '&laquo;': '«',
-  '&raquo;': '»',
-};
-
-function decodeEntities(text: string): string {
-  let decoded = text;
-  for (const [entity, char] of Object.entries(HTML_ENTITIES)) {
-    decoded = decoded.replaceAll(entity, char);
-  }
-  // Decodificar entidades numéricas &#123;
-  decoded = decoded.replace(/&#(\d+);/g, (_, code) =>
-    String.fromCharCode(parseInt(code, 10))
-  );
-  return decoded;
-}
 
 // Parsea children recursivamente: si tiene HTML, parsea; si no, decodifica texto
 function parseChildren(innerHtml: string): TelegraphNode[] {

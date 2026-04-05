@@ -53,7 +53,7 @@ export async function extract(url: string): Promise<Article> {
     throw new Error('No se pudo extraer el ID del artículo de la URL');
   }
 
-  const response = await fetch(`${API_URL}/${articleId}`);
+  const response = await fetch(`${API_URL}/${articleId}`, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }

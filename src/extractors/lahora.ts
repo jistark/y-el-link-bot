@@ -4,7 +4,7 @@ import type { Article } from '../types.js';
 // Metadata from og: meta tags, author from dataLayer
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);

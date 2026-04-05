@@ -1,41 +1,6 @@
 import type { Article } from '../types.js';
 import { fetchBypass } from './fetch-bypass.js';
-
-interface JsonLdArticle {
-  '@type'?: string;
-  headline?: string;
-  articleBody?: string;
-  description?: string;
-  author?: { name?: string } | { name?: string }[] | string;
-  datePublished?: string;
-  image?: string | { url?: string } | { url?: string }[];
-}
-
-function extractAuthor(author: JsonLdArticle['author']): string | undefined {
-  if (!author) return undefined;
-
-  if (Array.isArray(author)) {
-    const names = author.map((a) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
-    return names.length > 0 ? names.join(', ') : undefined;
-  }
-
-  if (typeof author === 'object') {
-    return author.name || undefined;
-  }
-
-  return String(author) || undefined;
-}
-
-function extractImage(image: JsonLdArticle['image']): string | undefined {
-  if (!image) return undefined;
-  if (typeof image === 'string') return image;
-  if (Array.isArray(image)) {
-    const first = image[0];
-    return typeof first === 'string' ? first : first?.url;
-  }
-  if (typeof image === 'object') return image.url;
-  return undefined;
-}
+import { type JsonLdArticle, extractAuthor, extractImage } from './helpers/json-ld.js';
 
 function extractBodyFromHtml(html: string): string | null {
   // The Atlantic: article body in ArticleBody class

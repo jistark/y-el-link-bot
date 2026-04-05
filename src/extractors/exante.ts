@@ -6,7 +6,7 @@ import { fetchBypass } from './fetch-bypass.js';
 // No JSON-LD, usa og: meta + contenido-noticia class para body
 
 async function fetchHtml(url: string): Promise<string> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }

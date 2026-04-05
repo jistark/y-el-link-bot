@@ -25,25 +25,56 @@ interface NewsApiResponse {
   };
 }
 
+// Artículo listado en una página del papel digital
+export interface PageArticleInfo {
+  id: string;
+  title: string;
+  width: number;
+  height: number;
+}
+
 // Detecta el tipo de URL y extrae los parámetros necesarios
 function parseUrl(url: string): {
-  type: 'digital' | 'beta' | 'blogs' | 'subsitio';
+  type: 'digital' | 'digital-page' | 'beta' | 'blogs' | 'subsitio';
   date?: string;
   articleId?: string;
+  pageId?: string;
   slug?: string;
   index?: string;
 } | null {
-  // digital.elmercurio.com/2026/01/27/A/0H4K1D2V (5 partes)
-  // digital.elmercurio.com/2026/01/26/A/NG4K1CL9/UC4K1CT6 (6 partes)
+  // Mobile: digital.elmercurio.com/mobile#2026/04/05/B/6G4KN09U
+  const mobileMatch = url.match(
+    /digital\.elmercurio\.com\/mobile#(\d{4})\/(\d{2})\/(\d{2})\/\w+\/(\w+)/
+  );
+  if (mobileMatch) {
+    const [, year, month, day, pageId] = mobileMatch;
+    return {
+      type: 'digital-page',
+      date: `${year}/${month}/${day}`,
+      pageId,
+    };
+  }
+
+  // digital.elmercurio.com/2026/01/27/A/0H4K1D2V (5 partes → página)
+  // digital.elmercurio.com/2026/01/26/A/NG4K1CL9/UC4K1CT6 (6 partes → artículo)
   const digitalMatch = url.match(
     /digital\.elmercurio\.com\/(\d{4})\/(\d{2})\/(\d{2})\/\w+\/(\w+)(?:\/(\w+))?/
   );
   if (digitalMatch) {
     const [, year, month, day, part1, part2] = digitalMatch;
+    if (part2) {
+      // 6 partes: part2 es el article ID
+      return {
+        type: 'digital',
+        date: `${year}/${month}/${day}`,
+        articleId: part2,
+      };
+    }
+    // 5 partes: part1 es el page ID
     return {
-      type: 'digital',
+      type: 'digital-page',
       date: `${year}/${month}/${day}`,
-      articleId: part2 || part1, // Si hay 6 partes, usar la última; si hay 5, usar part1
+      pageId: part1,
     };
   }
 
@@ -136,7 +167,7 @@ function cleanMercurioTags(text: string): string {
 async function extractFromDigitalJson(date: string, articleId: string): Promise<Article> {
   const jsonUrl = `https://digital.elmercurio.com/${date}/content/articles/${articleId}.json`;
 
-  const response = await fetch(jsonUrl);
+  const response = await fetch(jsonUrl, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
@@ -177,7 +208,7 @@ async function extractFromDigitalJson(date: string, articleId: string): Promise<
 async function extractFromNewsApi(index: string, articleId: string, originalUrl: string): Promise<Article> {
   const apiUrl = `https://newsapi.ecn.cl/NewsApi/${index}/noticia/${articleId}`;
 
-  const response = await fetch(apiUrl);
+  const response = await fetch(apiUrl, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
@@ -225,6 +256,7 @@ const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google
 async function extractFromBlogs(originalUrl: string): Promise<Article> {
   const response = await fetch(originalUrl, {
     headers: { 'User-Agent': GOOGLEBOT_UA },
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
@@ -309,7 +341,7 @@ async function searchElasticSearch(keywords: string, date: string): Promise<{ ar
   const encodedQuery = encodeURIComponent(JSON.stringify(query));
   const url = `${ELASTICSEARCH_URL}?source=${encodedQuery}&source_content_type=application/json`;
 
-  let response = await fetch(url);
+  let response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   let data: ElasticSearchResponse = await response.json();
 
   // Si no hay resultados con match_phrase, intentar con match normal
@@ -326,7 +358,7 @@ async function searchElasticSearch(keywords: string, date: string): Promise<{ ar
       size: 5,
     };
     const fallbackEncoded = encodeURIComponent(JSON.stringify(fallbackQuery));
-    response = await fetch(`${ELASTICSEARCH_URL}?source=${fallbackEncoded}&source_content_type=application/json`);
+    response = await fetch(`${ELASTICSEARCH_URL}?source=${fallbackEncoded}&source_content_type=application/json`, { signal: AbortSignal.timeout(15_000) });
     data = await response.json();
   }
 
@@ -364,6 +396,53 @@ async function extractFromBeta(date: string, slug: string, originalUrl: string):
   throw new Error('No se encontró el artículo en ElasticSearch');
 }
 
+// Verifica si una URL es de página (necesita selección de artículo)
+export function isPageUrl(url: string): boolean {
+  const parsed = parseUrl(url);
+  return parsed?.type === 'digital-page';
+}
+
+// Obtiene la lista de artículos de una página del papel digital
+export async function fetchPageArticles(url: string): Promise<{
+  articles: PageArticleInfo[];
+  date: string;
+  sectionName: string;
+  page: number;
+} | null> {
+  const parsed = parseUrl(url);
+  if (!parsed || parsed.type !== 'digital-page' || !parsed.pageId || !parsed.date) {
+    return null;
+  }
+
+  const pageUrl = `https://digital.elmercurio.com/${parsed.date}/content/pages/${parsed.pageId}.json`;
+  const response = await fetch(pageUrl, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) return null;
+
+  const data = await response.json();
+
+  // Filtrar artículos que no son para web (name contiene NO_WEB)
+  const articles: PageArticleInfo[] = (data.articles || [])
+    .filter((a: any) => !a.name?.includes('NO_WEB') && a.id && a.title)
+    .map((a: any) => ({
+      id: a.id,
+      title: (a.title || '').replace(/<\/?highlight>/gi, '').trim(),
+      width: a.width || 0,
+      height: a.height || 0,
+    }));
+
+  return {
+    articles,
+    date: parsed.date,
+    sectionName: data.category_name || data.section_name || '',
+    page: data.page || 0,
+  };
+}
+
+// Extrae un artículo específico por ID y fecha (para uso desde el selector de página)
+export async function extractByArticleId(articleId: string, date: string): Promise<Article> {
+  return extractFromDigitalJson(date, articleId);
+}
+
 export async function extract(url: string): Promise<Article> {
   const parsed = parseUrl(url);
   if (!parsed) {
@@ -373,6 +452,9 @@ export async function extract(url: string): Promise<Article> {
   switch (parsed.type) {
     case 'digital':
       return extractFromDigitalJson(parsed.date!, parsed.articleId!);
+
+    case 'digital-page':
+      throw new Error('URL de página requiere selección de artículo');
 
     case 'beta':
       return extractFromBeta(parsed.date!, parsed.slug!, url);

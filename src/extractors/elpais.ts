@@ -170,7 +170,7 @@ function extractParagraphsFromHtml(html: string): string[] {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: ELPAIS_HEADERS });
+  const response = await fetch(url, { headers: ELPAIS_HEADERS, signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }

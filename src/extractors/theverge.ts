@@ -1,18 +1,8 @@
 import type { Article } from '../types.js';
-
-interface JsonLdArticle {
-  '@type': string;
-  headline: string;
-  description?: string;
-  articleBody: string;
-  author?: { name: string }[] | { name: string };
-  datePublished?: string;
-  image?: (string | { url: string })[];
-  url?: string;
-}
+import { type JsonLdArticle, extractAuthor, extractImage } from './helpers/json-ld.js';
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
@@ -53,29 +43,12 @@ export async function extract(url: string): Promise<Article> {
     throw new Error('Artículo sin título');
   }
 
-  // Extraer autor
-  let author: string | undefined;
-  if (article.author) {
-    if (Array.isArray(article.author)) {
-      author = article.author.map(a => a.name).join(', ');
-    } else {
-      author = article.author.name;
-    }
-  }
-
-  // Extraer imágenes
-  const images: Article['images'] = [];
-  if (article.image) {
-    for (const img of article.image) {
-      const imgUrl = typeof img === 'string' ? img : img.url;
-      if (imgUrl) {
-        images.push({ url: imgUrl });
-      }
-    }
-  }
+  const author = extractAuthor(article.author);
+  const mainImage = extractImage(article.image);
+  const images: Article['images'] = mainImage ? [{ url: mainImage }] : undefined;
 
   // Convertir articleBody (texto plano) a HTML con párrafos
-  const body = article.articleBody
+  const body = (article.articleBody || '')
     .split(/\n\n+/)
     .filter(p => p.trim())
     .map(p => `<p>${p.trim()}</p>`)
@@ -87,8 +60,8 @@ export async function extract(url: string): Promise<Article> {
     author,
     date: article.datePublished,
     body,
-    images: images.length > 0 ? images : undefined,
-    url: article.url || url,
+    images,
+    url,
     source: 'theverge',
   };
 }

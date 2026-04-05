@@ -4,7 +4,7 @@ import type { Article } from '../types.js';
 // JSON-LD tiene metadata pero articleBody está contaminado con sidebar — usar HTML para body
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);

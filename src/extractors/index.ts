@@ -54,9 +54,9 @@ const URL_PATTERNS = {
   t13: /^(?:www\.)?(?:t13|13)\.cl$/,
   tvn: /^(?:www\.)?(?:tvn|24horas)\.cl$/,
   mega: /^(?:www\.)?(?:meganoticias|mega)\.cl$/,
-  chilevision: /chilevision\.cl/,
-  ojoalatele: /ojoalatele\.com/,
-  lahora: /lahora\.cl/,
+  chilevision: /(?:^|\.)?chilevision\.cl$/,
+  ojoalatele: /(?:^|\.)?ojoalatele\.com$/,
+  lahora: /(?:^|\.)?lahora\.cl$/,
   // substack and beehiiv deprecated - extraction unreliable
   // reuters requires browser-level bypass
 } as const;

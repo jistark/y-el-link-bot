@@ -3,7 +3,8 @@ import { join } from 'path';
 import { mkdirSync } from 'fs';
 import type { Api } from 'grammy';
 import type { Article } from '../types.js';
-import { createPage } from '../formatters/telegraph.js';
+import { createPage, deletePage } from '../formatters/telegraph.js';
+import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
 
 const RSS_FEED_URL = 'https://adprensa.cl/feed/';
 const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -12,18 +13,6 @@ const MAX_POSTED = 500;
 const ITEM_DELAY = 3_000;
 
 const POSTED_PATH = join(process.cwd(), 'data', 'adprensa-posted.json');
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-];
-
-function randomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
 
 interface RssItem {
   guid: string;
@@ -64,17 +53,6 @@ async function fetchRssFeed(): Promise<string> {
 
 // --- Parsing ---
 
-function decodeEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&#8211;/g, '–')
-    .replace(/&#8230;/g, '...')
-    .replace(/&#160;/g, ' ');
-}
 
 function parseItems(xml: string): RssItem[] {
   const items: RssItem[] = [];
@@ -115,30 +93,50 @@ function parseItems(xml: string): RssItem[] {
 
 // --- Telegram helpers ---
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-function getRetryAfter(err: any): number | null {
-  const match = err?.message?.match(/retry after (\d+)/i);
-  return match ? parseInt(match[1], 10) : null;
+// --- Content preprocessing ---
+
+// Detect if content is a contact list (table with emails/phones)
+function isContactList(html: string): boolean {
+  return /<table[\s>]/i.test(html) && /(?:e-?mail|fono|celular)/i.test(html);
 }
 
-async function sendWithRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
-  try {
-    return await fn();
-  } catch (err: any) {
-    const retryAfter = getRetryAfter(err);
-    if (retryAfter) {
-      console.log(JSON.stringify({
-        event: 'adprensa_rate_limited',
-        retryAfter,
-        label,
-        timestamp: new Date().toISOString(),
-      }));
-      await sleep((retryAfter + 1) * 1000);
-      return await fn();
-    }
-    throw err;
-  }
+// Transform pauta/agenda content: sections → headings, dash-items → lists
+function preprocessPautaContent(html: string): string {
+  let result = html;
+
+  // Pattern 1: ==== lines wrapping a section title (strong or plain)
+  // <p>====================<br />\nPRESIDENCIAL<br />\n====================</p>
+  // Also handles <strong> variants
+  result = result.replace(
+    /<p>\s*(?:<strong>)?[=]{3,}(?:<\/strong>)?\s*<br\s*\/?>\s*(?:<strong>)?([\s\S]*?)(?:<\/strong>)?\s*<br\s*\/?>\s*(?:<strong>)?[=]{3,}(?:<\/strong>)?\s*<\/p>/gi,
+    (_match, title) => `<h3>${title.trim()}</h3>`
+  );
+
+  // Pattern 2: ——— lines wrapping a subsection title
+  // <p>———————<br />\nATENCIÓN CON<br />\n———————</p>
+  result = result.replace(
+    /<p>\s*(?:<strong>)?[—–\-]{3,}(?:<\/strong>)?\s*<br\s*\/?>\s*(?:<strong>)?([\s\S]*?)(?:<\/strong>)?\s*<br\s*\/?>\s*(?:<strong>)?[—–\-]{3,}(?:<\/strong>)?\s*<\/p>/gi,
+    (_match, title) => `<h4>${title.trim()}</h4>`
+  );
+
+  // Pattern 3: Standalone separator lines (just dashes) → remove
+  result = result.replace(/<p>\s*(?:<strong>)?[—–\-=]{3,}(?:<\/strong>)?\s*<\/p>/gi, '');
+
+  // Pattern 4: Paragraphs starting with - → list items, group consecutive ones
+  // First, convert individual -items to <li>
+  result = result.replace(
+    /<p>\s*[-–]\s*([\s\S]*?)\s*<\/p>/gi,
+    '<li>$1</li>'
+  );
+
+  // Wrap consecutive <li> blocks in <ul>
+  result = result.replace(
+    /((?:<li>[\s\S]*?<\/li>\s*)+)/gi,
+    '<ul>$1</ul>'
+  );
+
+  return result;
 }
 
 // --- Core ---
@@ -163,10 +161,13 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
 
   for (const item of newItems) {
     try {
+      const contactList = isContactList(item.contentEncoded);
+      const body = contactList ? item.contentEncoded : preprocessPautaContent(item.contentEncoded);
+
       // Build Article for Telegraph
       const article: Article = {
         title: item.title,
-        body: item.contentEncoded,
+        body,
         url: item.link,
         source: 'adprensa',
         date: item.pubDate,
@@ -175,10 +176,23 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
       // Create Telegraph page
       const result = await createPage(article);
 
+      // Contact lists expire after 72h (contain emails/phones)
+      if (contactList) {
+        const LISTADO_TTL = 72 * 60 * 60 * 1000;
+        setTimeout(() => {
+          deletePage(result.path).catch(() => {});
+          console.log(JSON.stringify({
+            event: 'adprensa_listado_expired',
+            path: result.path,
+            timestamp: new Date().toISOString(),
+          }));
+        }, LISTADO_TTL);
+      }
+
       // Post Telegraph link to channel
       await sendWithRetry(
         () => api.sendMessage(chatId, result.url, { disable_notification: true }),
-        'sendMessage',
+        'sendMessage', 'adprensa',
       );
 
       posted.add(item.guid);

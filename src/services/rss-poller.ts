@@ -3,27 +3,14 @@ import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { InputFile } from 'grammy';
 import type { Api } from 'grammy';
-import type { InputMediaPhoto } from 'grammy/types';
+import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
 
 const RSS_FEED_URL = 'https://senal.mediabanco.com/feed/';
 const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const JITTER = 3 * 60 * 1000;         // ±3 minutes
 const MAX_POSTED = 500;
-const MAX_PHOTOS = 10; // Telegram sendMediaGroup limit
 
 const POSTED_PATH = join(process.cwd(), 'data', 'rss-posted.json');
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-];
-
-function randomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
 
 interface RssItem {
   guid: string;
@@ -32,8 +19,7 @@ interface RssItem {
 }
 
 interface MediaLinks {
-  vimeoUrl: string | null;
-  videoHdLink: string | null;
+  vimeoId: string | null;
   fotosLink: string | null;
   clave: string | null;
 }
@@ -123,47 +109,9 @@ async function getWetransferFileUrl(transferId: string, securityHash: string, pa
   return data.direct_link || null;
 }
 
-async function downloadWetransferPhotos(
-  fotosUrl: string,
-  password: string,
-): Promise<{ buf: Uint8Array; name: string }[]> {
-  const resolved = await resolveWetransferUrl(fotosUrl);
-  if (!resolved) return [];
-
-  const files = await getWetransferFiles(resolved.transferId, resolved.securityHash, password);
-  // Only JPG/PNG images
-  const imageFiles = files.filter(f => /\.(jpe?g|png)$/i.test(f.name)).slice(0, MAX_PHOTOS);
-  if (imageFiles.length === 0) return [];
-
-  const photos: { buf: Uint8Array; name: string }[] = [];
-  for (const file of imageFiles) {
-    try {
-      const url = await getWetransferFileUrl(resolved.transferId, resolved.securityHash, password, file.id);
-      if (!url) continue;
-      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-      if (!res.ok) continue;
-      const buf = new Uint8Array(await res.arrayBuffer());
-      photos.push({ buf, name: file.name });
-    } catch {
-      // Skip failed downloads, continue with remaining
-    }
-  }
-
-  return photos;
-}
 
 // --- RSS Parsing ---
 
-function decodeEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&#8230;/g, '...')
-    .replace(/&#160;/g, ' ');
-}
 
 function parseItems(xml: string): RssItem[] {
   const items: RssItem[] = [];
@@ -191,19 +139,70 @@ function parseItems(xml: string): RssItem[] {
 
 function extractMediaLinks(html: string): MediaLinks {
   const vimeoMatch = html.match(/player\.vimeo\.com\/video\/(\d+)/);
-  const vimeoUrl = vimeoMatch ? `https://vimeo.com/${vimeoMatch[1]}` : null;
 
-  const videoHdMatch = html.match(/Link de descarga Video HD:\s*<a\s+href="([^"]+)"/);
   const fotosMatch = html.match(/Link de descarga Fotos:\s*<a\s+href="([^"]+)"/);
-
   const claveMatch = html.match(/Clave de Descarga:\s*([A-Za-z0-9]+)/);
 
   return {
-    vimeoUrl,
-    videoHdLink: videoHdMatch?.[1] || null,
+    vimeoId: vimeoMatch?.[1] || null,
     fotosLink: fotosMatch?.[1] || null,
     clave: claveMatch?.[1] || null,
   };
+}
+
+// Fetch Vimeo thumbnail via oEmbed
+async function getVimeoThumbnail(vimeoId: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://vimeo.com/api/oembed.json?url=https://vimeo.com/${vimeoId}`,
+      { signal: AbortSignal.timeout(10_000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    return data.thumbnail_url || null;
+  } catch {
+    return null;
+  }
+}
+
+// Get a single photo: try Vimeo oEmbed thumbnail first, then first WeTransfer photo
+async function getSinglePhoto(media: MediaLinks): Promise<{ buf: Uint8Array; name: string } | null> {
+  // Try Vimeo thumbnail
+  if (media.vimeoId) {
+    const thumbUrl = await getVimeoThumbnail(media.vimeoId);
+    if (thumbUrl) {
+      try {
+        const res = await fetch(thumbUrl, { signal: AbortSignal.timeout(15_000) });
+        if (res.ok) {
+          const buf = new Uint8Array(await res.arrayBuffer());
+          return { buf, name: 'thumbnail.jpg' };
+        }
+      } catch { /* fallthrough to WeTransfer */ }
+    }
+  }
+
+  // Fallback: first WeTransfer photo
+  if (media.fotosLink && media.clave) {
+    const resolved = await resolveWetransferUrl(media.fotosLink);
+    if (resolved) {
+      const files = await getWetransferFiles(resolved.transferId, resolved.securityHash, media.clave);
+      const imageFile = files.find(f => /\.(jpe?g|png)$/i.test(f.name));
+      if (imageFile) {
+        const url = await getWetransferFileUrl(resolved.transferId, resolved.securityHash, media.clave, imageFile.id);
+        if (url) {
+          try {
+            const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+            if (res.ok) {
+              const buf = new Uint8Array(await res.arrayBuffer());
+              return { buf, name: imageFile.name };
+            }
+          } catch { /* no photo available */ }
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 // --- Formatting ---
@@ -212,21 +211,9 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function formatMessage(item: RssItem, media: MediaLinks): string {
+function formatCaption(item: RssItem, media: MediaLinks): string {
   const lines: string[] = [];
-
   lines.push(`\u{1F4F9} <b>${escapeHtml(item.title)}</b>`);
-
-  if (media.vimeoUrl) {
-    lines.push('');
-    lines.push(`\u{1F3AC} ${media.vimeoUrl}`);
-  }
-
-  if (media.videoHdLink || media.fotosLink) {
-    lines.push('');
-    if (media.videoHdLink) lines.push(`\u{1F4E5} Video HD: ${media.videoHdLink}`);
-    if (media.fotosLink) lines.push(`\u{1F4E5} Fotos: ${media.fotosLink}`);
-  }
 
   if (media.clave) {
     lines.push(`\u{1F511} Clave: ${media.clave}`);
@@ -238,32 +225,6 @@ function formatMessage(item: RssItem, media: MediaLinks): string {
 // --- Telegram helpers ---
 
 const ITEM_DELAY = 3_000; // 3s between items to avoid rate limits
-
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
-function getRetryAfter(err: any): number | null {
-  const match = err?.message?.match(/retry after (\d+)/i);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-async function sendWithRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
-  try {
-    return await fn();
-  } catch (err: any) {
-    const retryAfter = getRetryAfter(err);
-    if (retryAfter) {
-      console.log(JSON.stringify({
-        event: 'rss_rate_limited',
-        retryAfter,
-        label,
-        timestamp: new Date().toISOString(),
-      }));
-      await sleep((retryAfter + 1) * 1000);
-      return await fn();
-    }
-    throw err;
-  }
-}
 
 // --- Core ---
 
@@ -285,41 +246,34 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
   for (const item of newItems) {
     const media = extractMediaLinks(item.contentEncoded);
 
-    // Skip items with no useful links
-    if (!media.vimeoUrl && !media.videoHdLink && !media.fotosLink) continue;
+    // Skip items with no media (mark as posted to avoid re-evaluation)
+    if (!media.vimeoId && !media.fotosLink) {
+      posted.add(item.guid);
+      continue;
+    }
 
-    const message = formatMessage(item, media);
+    const caption = formatCaption(item, media);
 
     try {
-      // Send text message
-      await sendWithRetry(
-        () => api.sendMessage(chatId, message, { parse_mode: 'HTML', disable_notification: true }),
-        'sendMessage',
-      );
+      // Try to get a single photo (Vimeo thumbnail or first WeTransfer photo)
+      const photo = await getSinglePhoto(media);
 
-      // Download and send photos from WeTransfer
-      if (media.fotosLink && media.clave) {
-        try {
-          const photos = await downloadWetransferPhotos(media.fotosLink, media.clave);
-          if (photos.length > 0) {
-            const mediaGroup: InputMediaPhoto[] = photos.map((photo, i) => ({
-              type: 'photo' as const,
-              media: new InputFile(photo.buf, photo.name),
-              ...(i === 0 ? { caption: escapeHtml(item.title), parse_mode: 'HTML' as const } : {}),
-            }));
-            await sendWithRetry(
-              () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
-              'sendMediaGroup',
-            );
-          }
-        } catch (err: any) {
-          console.error(JSON.stringify({
-            event: 'rss_photos_error',
-            guid: item.guid,
-            error: err?.message || String(err),
-            timestamp: new Date().toISOString(),
-          }));
-        }
+      if (photo) {
+        // Send as photo message with caption
+        await sendWithRetry(
+          () => api.sendPhoto(chatId, new InputFile(photo.buf, photo.name), {
+            caption,
+            parse_mode: 'HTML',
+            disable_notification: true,
+          }),
+          'sendPhoto', 'rss',
+        );
+      } else {
+        // Fallback: text-only message
+        await sendWithRetry(
+          () => api.sendMessage(chatId, caption, { parse_mode: 'HTML', disable_notification: true }),
+          'sendMessage', 'rss',
+        );
       }
 
       posted.add(item.guid);

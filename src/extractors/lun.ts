@@ -138,7 +138,7 @@ export async function extract(url: string): Promise<Article> {
 
   // Si es URL desktop (no tiene NewsID), primero obtener el NewsID
   if (!params.newsId) {
-    const desktopResponse = await fetch(url);
+    const desktopResponse = await fetch(url, { signal: AbortSignal.timeout(15_000) });
     if (!desktopResponse.ok) {
       throw new Error(`Error al obtener página desktop: ${desktopResponse.status}`);
     }
@@ -163,7 +163,7 @@ export async function extract(url: string): Promise<Article> {
 
   // Construir URL de Homemob.aspx y obtener contenido
   const homemobUrl = buildHomemobUrl(params);
-  const response = await fetch(homemobUrl);
+  const response = await fetch(homemobUrl, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener contenido: ${response.status}`);
   }

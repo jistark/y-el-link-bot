@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard, Context, InputFile } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
+import { isPageUrl, fetchPageArticles, extractByArticleId, type PageArticleInfo } from './extractors/elmercurio.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import {
@@ -62,6 +63,26 @@ interface PendingRequest {
 
 const pending = new Map<string, PendingRequest>();
 
+// Pendientes de selección de artículo en página (El Mercurio papel digital)
+interface PendingPageSelection {
+  articles: PageArticleInfo[];
+  date: string;
+  originalUrl: string;
+  userId: number;
+  username?: string;
+  firstName: string;
+  chatId: number;
+  botMessageId: number;
+  originalMessageId: number;
+  originalText: string;
+  replyToMessageId?: number;
+  threadId?: number;
+}
+
+const pendingPages = new Map<number, PendingPageSelection & { createdAt: number }>();
+
+const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+
 // Mapa de Telegraph path → URL original (para regenerar artículos)
 const pathToUrl = new Map<string, string>();
 
@@ -95,6 +116,24 @@ setInterval(() => {
     const recent = timestamps.filter(t => now - t < RATE_WINDOW);
     if (recent.length === 0) userRequests.delete(userId);
     else userRequests.set(userId, recent);
+  }
+  // Limpiar selecciones de página expiradas (10 min TTL)
+  for (const [key, sel] of pendingPages) {
+    if (now - sel.createdAt > 10 * 60 * 1000) pendingPages.delete(key);
+  }
+  // Limpiar pathToUrl: eliminar entries cuyo path no esté en cache
+  if (pathToUrl.size > 500) {
+    const activePaths = new Set<string>();
+    for (const entry of cache.values()) activePaths.add(entry.result.path);
+    for (const path of pathToUrl.keys()) {
+      if (!activePaths.has(path)) pathToUrl.delete(path);
+    }
+  }
+  // Limpiar mundialNotified: eliminar entries con fecha pasada
+  const todayStr = new Date(now).toISOString().slice(0, 10);
+  for (const key of mundialNotified) {
+    const dateStr = key.slice(0, 10); // key format: YYYY-MM-DD-HH:mm
+    if (dateStr < todayStr) mundialNotified.delete(key);
   }
 }, 5 * 60 * 1000);
 
@@ -238,11 +277,11 @@ async function fetchZappingRatings(): Promise<{ channel: typeof ZAPPING_CHANNELS
 }
 
 function getChileTime(): string {
-  const now = new Date();
-  const chileTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
-  const hours = chileTime.getHours().toString().padStart(2, '0');
-  const minutes = chileTime.getMinutes().toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
+  return new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'America/Santiago',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // Fuentes de precio del dólar (match con sources en dolar.cl)
@@ -694,22 +733,28 @@ export function createBot(token: string): Bot {
 
     // Corea del Norte
     if (argNorm === 'norcorea' || argNorm === 'corea del norte' || argNorm === 'north korea') {
-      const buf = await fetch('https://i.imgur.com/B7yiPD1.jpeg').then(r => r.arrayBuffer());
-      await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'norcorea.jpg'), replyOpts);
+      try {
+        const buf = await fetch('https://i.imgur.com/B7yiPD1.jpeg', { signal: AbortSignal.timeout(10_000) }).then(r => r.arrayBuffer());
+        await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'norcorea.jpg'), replyOpts);
+      } catch { await ctx.reply('🫠', replyOpts); }
       return;
     }
 
     // Profesor de artes
     if (argNorm === 'artes' || argNorm === 'profesor artes' || argNorm === 'profesor de artes') {
-      const buf = await fetch('https://i.imgur.com/klS1PxD.jpeg').then(r => r.arrayBuffer());
-      await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'artes.jpg'), replyOpts);
+      try {
+        const buf = await fetch('https://i.imgur.com/klS1PxD.jpeg', { signal: AbortSignal.timeout(10_000) }).then(r => r.arrayBuffer());
+        await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'artes.jpg'), replyOpts);
+      } catch { await ctx.reply('🫠', replyOpts); }
       return;
     }
 
     // El pelao de brazzers / Johnny Sins
     if (/\b(pelao|pelado)\b/.test(argNorm) || /\bbrazzers\b/.test(argNorm) || /\bjohnny\s*sins?\b/.test(argNorm)) {
-      const buf = await fetch('https://i.imgur.com/Ys17mHl.jpeg').then(r => r.arrayBuffer());
-      await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'pelao.jpg'), replyOpts);
+      try {
+        const buf = await fetch('https://i.imgur.com/Ys17mHl.jpeg', { signal: AbortSignal.timeout(10_000) }).then(r => r.arrayBuffer());
+        await ctx.replyWithPhoto(new InputFile(new Uint8Array(buf), 'pelao.jpg'), replyOpts);
+      } catch { await ctx.reply('🫠', replyOpts); }
       return;
     }
 
@@ -803,6 +848,75 @@ export function createBot(token: string): Bot {
       // Rate limiting por usuario (skip si no hay userId)
       if (ctx.from?.id && isRateLimited(ctx.from.id)) continue;
 
+      // El Mercurio: URLs de página necesitan selección de artículo
+      if (source === 'elmercurio' && isPageUrl(url)) {
+        try {
+          const pageData = await fetchPageArticles(url);
+          if (!pageData || pageData.articles.length === 0) {
+            await ctx.reply('❌ No encontré artículos en esa página.', {
+              reply_to_message_id: ctx.message.message_id,
+            });
+            continue;
+          }
+
+          // Si hay un solo artículo, extraerlo directamente sin preguntar
+          if (pageData.articles.length === 1) {
+            const article = await extractByArticleId(pageData.articles[0].id, pageData.date);
+            article.url = url;
+            const result = await createPage(article);
+            cache.set(`${url}#${pageData.articles[0].id}`, { result, expires: Date.now() + TTL });
+            pathToUrl.set(result.path, url);
+            await processAndReply(ctx, url, result);
+            continue;
+          }
+
+          // Múltiples artículos: mostrar selector
+          const maxArticles = Math.min(pageData.articles.length, NUMBER_EMOJIS.length);
+          const keyboard = new InlineKeyboard();
+          let text = `📰 <b>${escapeHtml(pageData.sectionName)}</b> — Pág. ${pageData.page}\n\n`;
+          text += 'Elige el artículo:\n\n';
+
+          for (let i = 0; i < maxArticles; i++) {
+            const a = pageData.articles[i];
+            text += `${NUMBER_EMOJIS[i]} ${escapeHtml(a.title)}\n`;
+            keyboard.text(NUMBER_EMOJIS[i], `empage:${i}`);
+            if ((i + 1) % 5 === 0) keyboard.row(); // Máx 5 botones por fila
+          }
+
+          const botMessage = await ctx.reply(text, {
+            parse_mode: 'HTML',
+            reply_markup: keyboard,
+            reply_to_message_id: ctx.message.message_id,
+          });
+
+          pendingPages.set(botMessage.message_id, {
+            articles: pageData.articles.slice(0, maxArticles),
+            date: pageData.date,
+            originalUrl: url,
+            userId: ctx.from?.id || 0,
+            username: ctx.from?.username,
+            firstName: ctx.from?.first_name || 'Usuario',
+            chatId: ctx.chat.id,
+            botMessageId: botMessage.message_id,
+            originalMessageId: ctx.message.message_id,
+            originalText: ctx.message.text,
+            replyToMessageId: ctx.message.reply_to_message?.message_id,
+            threadId: ctx.message.message_thread_id,
+            createdAt: Date.now(),
+          });
+        } catch (error) {
+          console.error(JSON.stringify({
+            event: 'page_selection_error', url,
+            error: error instanceof Error ? error.message : String(error),
+            timestamp: new Date().toISOString(),
+          }));
+          await ctx.reply('❌ No pude acceder a esa página.', {
+            reply_to_message_id: ctx.message.message_id,
+          });
+        }
+        continue;
+      }
+
       const pendingId = `${ctx.chat.id}:${ctx.message.message_id}:${url}`;
 
       // Revisar cache
@@ -861,9 +975,9 @@ export function createBot(token: string): Bot {
           } catch {
             // Mensaje ya borrado o inaccesible
           }
+        } finally {
+          pending.delete(pendingId);
         }
-
-        pending.delete(pendingId);
       }, UNDO_GRACE_PERIOD);
 
       // Guardar en pendientes
@@ -1097,6 +1211,110 @@ export function createBot(token: string): Bot {
             await ctx.api.editMessageText(chatId, messageId, '❌ No se pudo regenerar el artículo.');
           } catch {}
         }
+      }
+      return;
+    }
+
+    // Selección de artículo en página de El Mercurio
+    if (data.startsWith('empage:')) {
+      const index = parseInt(data.slice(7), 10);
+      const messageId = ctx.callbackQuery.message?.message_id;
+      if (!messageId) {
+        await ctx.answerCallbackQuery({ text: 'Error interno' });
+        return;
+      }
+
+      const sel = pendingPages.get(messageId);
+      if (!sel) {
+        await ctx.answerCallbackQuery({ text: 'Selección expirada. Pega la URL de nuevo.', show_alert: true });
+        return;
+      }
+
+      // Solo el autor o admins pueden elegir
+      const isOwner = ctx.from?.id === sel.userId;
+      let isAdmin = false;
+      if (!isOwner && ctx.chat && ctx.from?.id) {
+        try {
+          const member = await ctx.api.getChatMember(ctx.chat.id, ctx.from.id);
+          isAdmin = ['creator', 'administrator'].includes(member.status);
+        } catch {}
+      }
+      if (!isOwner && !isAdmin) {
+        await ctx.answerCallbackQuery({ text: 'Solo quien pegó la URL puede elegir' });
+        return;
+      }
+
+      const article = sel.articles[index];
+      if (!article) {
+        await ctx.answerCallbackQuery({ text: 'Artículo no válido' });
+        return;
+      }
+
+      pendingPages.delete(messageId);
+      await ctx.answerCallbackQuery({ text: '⏳ Procesando...' });
+
+      try {
+        await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '⏳ Procesando artículo...');
+
+        const extracted = await Promise.race([
+          extractByArticleId(article.id, sel.date),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), 30_000)
+          ),
+        ]);
+        extracted.url = sel.originalUrl;
+        const result = await createPage(extracted);
+        cache.set(`${sel.originalUrl}#${article.id}`, { result, expires: Date.now() + TTL });
+        pathToUrl.set(result.path, sel.originalUrl);
+
+        // Construir mensaje final
+        const keyboard = createActionKeyboard(result.path, sel.userId, sel.originalUrl);
+        const mention = sel.username ? `@${sel.username}` :
+          `<a href="tg://user?id=${sel.userId}">${escapeHtml(sel.firstName)}</a>`;
+        const extraText = getTextWithoutUrls(sel.originalText);
+        const messageText = extraText
+          ? `${mention}: ${escapeHtml(extraText)}\n\n${result.url}`
+          : `${mention} compartió:\n${result.url}`;
+
+        if (sel.replyToMessageId) {
+          try { await ctx.api.deleteMessage(sel.chatId, sel.botMessageId); } catch {}
+          try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
+
+          const sameId = sel.replyToMessageId === sel.threadId;
+          const threadOpts = sameId ? {} : (sel.threadId ? { message_thread_id: sel.threadId } : {});
+
+          await safeSendMessage(ctx.api, sel.chatId, messageText, {
+            ...threadOpts,
+            parse_mode: 'HTML',
+            reply_markup: keyboard,
+            reply_to_message_id: sel.replyToMessageId,
+          });
+        } else {
+          try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
+          try {
+            await ctx.api.editMessageText(sel.chatId, sel.botMessageId, messageText, {
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+              link_preview_options: { is_disabled: false },
+            });
+          } catch {
+            await safeSendMessage(ctx.api, sel.chatId, messageText, {
+              message_thread_id: sel.threadId,
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+            });
+          }
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: 'page_article_error',
+          articleId: article.id,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }));
+        try {
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '❌ No pude acceder al artículo.');
+        } catch {}
       }
       return;
     }
