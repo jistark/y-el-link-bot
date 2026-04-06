@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
-import { InputFile } from 'grammy';
+import { InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
 import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
 
@@ -21,6 +21,7 @@ interface RssItem {
 interface MediaLinks {
   vimeoId: string | null;
   fotosLink: string | null;
+  videoLink: string | null;
   clave: string | null;
 }
 
@@ -141,11 +142,13 @@ function extractMediaLinks(html: string): MediaLinks {
   const vimeoMatch = html.match(/player\.vimeo\.com\/video\/(\d+)/);
 
   const fotosMatch = html.match(/Link de descarga Fotos:\s*<a\s+href="([^"]+)"/);
+  const videoMatch = html.match(/Link de descarga Video(?:\s*HD)?:\s*<a\s+href="([^"]+)"/);
   const claveMatch = html.match(/Clave de Descarga:\s*([A-Za-z0-9]+)/);
 
   return {
     vimeoId: vimeoMatch?.[1] || null,
     fotosLink: fotosMatch?.[1] || null,
+    videoLink: videoMatch?.[1] || null,
     clave: claveMatch?.[1] || null,
   };
 }
@@ -165,9 +168,14 @@ async function getVimeoThumbnail(vimeoId: string): Promise<string | null> {
   }
 }
 
-// Get a single photo: try Vimeo oEmbed thumbnail first, then first WeTransfer photo
-async function getSinglePhoto(media: MediaLinks): Promise<{ buf: Uint8Array; name: string } | null> {
-  // Try Vimeo thumbnail
+const MAX_PHOTOS = 10; // Telegram sendMediaGroup limit
+const MAX_PHOTO_SIZE = 9 * 1024 * 1024; // 9 MB safety margin (Telegram limit is 10 MB)
+
+// Get photos: Vimeo thumbnail as first, then WeTransfer photos
+async function getPhotos(media: MediaLinks): Promise<{ buf: Uint8Array; name: string }[]> {
+  const photos: { buf: Uint8Array; name: string }[] = [];
+
+  // Try Vimeo thumbnail as lead photo
   if (media.vimeoId) {
     const thumbUrl = await getVimeoThumbnail(media.vimeoId);
     if (thumbUrl) {
@@ -175,34 +183,41 @@ async function getSinglePhoto(media: MediaLinks): Promise<{ buf: Uint8Array; nam
         const res = await fetch(thumbUrl, { signal: AbortSignal.timeout(15_000) });
         if (res.ok) {
           const buf = new Uint8Array(await res.arrayBuffer());
-          return { buf, name: 'thumbnail.jpg' };
+          if (buf.length <= MAX_PHOTO_SIZE) {
+            photos.push({ buf, name: 'thumbnail.jpg' });
+          }
         }
-      } catch { /* fallthrough to WeTransfer */ }
+      } catch { /* skip */ }
     }
   }
 
-  // Fallback: first WeTransfer photo
-  if (media.fotosLink && media.clave) {
+  // Add WeTransfer photos
+  if (media.fotosLink && media.clave && photos.length < MAX_PHOTOS) {
     const resolved = await resolveWetransferUrl(media.fotosLink);
     if (resolved) {
       const files = await getWetransferFiles(resolved.transferId, resolved.securityHash, media.clave);
-      const imageFile = files.find(f => /\.(jpe?g|png)$/i.test(f.name));
-      if (imageFile) {
-        const url = await getWetransferFileUrl(resolved.transferId, resolved.securityHash, media.clave, imageFile.id);
+      const imageFiles = files.filter(f => /\.(jpe?g|png)$/i.test(f.name))
+        .filter(f => f.size <= MAX_PHOTO_SIZE)
+        .slice(0, MAX_PHOTOS - photos.length);
+
+      for (const file of imageFiles) {
+        const url = await getWetransferFileUrl(resolved.transferId, resolved.securityHash, media.clave, file.id);
         if (url) {
           try {
             const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
             if (res.ok) {
               const buf = new Uint8Array(await res.arrayBuffer());
-              return { buf, name: imageFile.name };
+              if (buf.length <= MAX_PHOTO_SIZE) {
+                photos.push({ buf, name: file.name });
+              }
             }
-          } catch { /* no photo available */ }
+          } catch { /* skip this photo */ }
         }
       }
     }
   }
 
-  return null;
+  return photos;
 }
 
 // --- Formatting ---
@@ -217,6 +232,14 @@ function formatCaption(item: RssItem, media: MediaLinks): string {
 
   if (media.clave) {
     lines.push(`\u{1F511} Clave: ${media.clave}`);
+  }
+
+  if (media.videoLink) {
+    lines.push(`\u{1F3AC} <a href="${escapeHtml(media.videoLink)}">Video HD</a>`);
+  }
+
+  if (media.fotosLink) {
+    lines.push(`\u{1F4F7} <a href="${escapeHtml(media.fotosLink)}">Fotos</a>`);
   }
 
   return lines.join('\n');
@@ -255,13 +278,24 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
     const caption = formatCaption(item, media);
 
     try {
-      // Try to get a single photo (Vimeo thumbnail or first WeTransfer photo)
-      const photo = await getSinglePhoto(media);
+      const photos = await getPhotos(media);
 
-      if (photo) {
-        // Send as photo message with caption
+      if (photos.length >= 2) {
+        // Send as media group (album) — caption on first photo
+        const mediaGroup = photos.map((p, i) =>
+          InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? {
+            caption,
+            parse_mode: 'HTML',
+          } : {}),
+        );
         await sendWithRetry(
-          () => api.sendPhoto(chatId, new InputFile(photo.buf, photo.name), {
+          () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
+          'sendMediaGroup', 'rss',
+        );
+      } else if (photos.length === 1) {
+        // Single photo
+        await sendWithRetry(
+          () => api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
             caption,
             parse_mode: 'HTML',
             disable_notification: true,
@@ -269,7 +303,7 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
           'sendPhoto', 'rss',
         );
       } else {
-        // Fallback: text-only message
+        // No photos — text-only
         await sendWithRetry(
           () => api.sendMessage(chatId, caption, { parse_mode: 'HTML', disable_notification: true }),
           'sendMessage', 'rss',
