@@ -12,6 +12,14 @@ const MAX_POSTED = 500;
 
 const POSTED_PATH = join(process.cwd(), 'data', 'rss-posted.json');
 
+// Shared in-memory set — used by both the poller and /ultimo command
+let postedGuids: Set<string> | null = null;
+
+async function getPostedGuids(): Promise<Set<string>> {
+  if (!postedGuids) postedGuids = await loadPostedGuids();
+  return postedGuids;
+}
+
 interface RssItem {
   guid: string;
   title: string;
@@ -391,8 +399,8 @@ export async function fetchLatestSenal(api: Api, chatId: number): Promise<boolea
     });
   }
 
-  // Mark as posted so the poller doesn't duplicate it
-  const posted = await loadPostedGuids();
+  // Mark as posted in shared set so the poller doesn't duplicate it
+  const posted = await getPostedGuids();
   posted.add(item.guid);
   await savePostedGuids(posted);
 
@@ -410,7 +418,7 @@ export async function startRssPoller(api: Api): Promise<void> {
     return;
   }
 
-  const posted = await loadPostedGuids();
+  const posted = await getPostedGuids();
 
   console.log(JSON.stringify({
     event: 'rss_poller_started',
