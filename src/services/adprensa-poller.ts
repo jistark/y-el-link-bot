@@ -266,7 +266,16 @@ export async function fetchLatestPauta(api: Api, chatId: number): Promise<boolea
     }, LISTADO_TTL);
   }
 
-  await api.sendMessage(chatId, result.url, { disable_notification: true });
+  await api.sendMessage(chatId, result.url, {
+    disable_notification: true,
+    link_preview_options: { is_disabled: true },
+  });
+
+  // Mark as posted so the poller doesn't duplicate it
+  const posted = await loadPostedGuids();
+  posted.add(item.guid);
+  await savePostedGuids(posted);
+
   return true;
 }
 
