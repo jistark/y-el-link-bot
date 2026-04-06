@@ -238,6 +238,38 @@ function scheduleNext(api: Api, chatId: number, posted: Set<string>) {
   }, delay);
 }
 
+// Fetch and send the latest Pauta item (for manual /ultimo command)
+export async function fetchLatestPauta(api: Api, chatId: number): Promise<boolean> {
+  const xml = await fetchRssFeed();
+  const allItems = parseItems(xml);
+  const item = allItems.find(i => i.categories.includes('Pauta'));
+
+  if (!item) return false;
+
+  const contactList = isContactList(item.contentEncoded);
+  const body = contactList ? item.contentEncoded : preprocessPautaContent(item.contentEncoded);
+
+  const article: Article = {
+    title: item.title,
+    body,
+    url: item.link,
+    source: 'adprensa',
+    date: item.pubDate,
+  };
+
+  const result = await createPage(article);
+
+  if (contactList) {
+    const LISTADO_TTL = 72 * 60 * 60 * 1000;
+    setTimeout(() => {
+      deletePage(result.path).catch(() => {});
+    }, LISTADO_TTL);
+  }
+
+  await api.sendMessage(chatId, result.url, { disable_notification: true });
+  return true;
+}
+
 export async function startAdprensaPoller(api: Api): Promise<void> {
   const chatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
   if (!chatId || isNaN(chatId)) {

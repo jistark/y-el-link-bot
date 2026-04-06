@@ -9,8 +9,8 @@ import {
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
-import { startRssPoller } from './services/rss-poller.js';
-import { startAdprensaPoller } from './services/adprensa-poller.js';
+import { startRssPoller, fetchLatestSenal } from './services/rss-poller.js';
+import { startAdprensaPoller, fetchLatestPauta } from './services/adprensa-poller.js';
 import { readFile, writeFile } from 'fs/promises';
 
 // Safe wrapper: reintenta sin message_thread_id si Telegram rechaza el thread
@@ -1320,6 +1320,37 @@ export function createBot(token: string): Bot {
     }
 
     await ctx.answerCallbackQuery();
+  });
+
+  // /ultimo — fetch latest Señal or Pauta post (Bancomedia channel only)
+  const bancomediaChatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
+
+  bot.command(['ultimo', 'last'], async (ctx) => {
+    if (!bancomediaChatId || ctx.chat.id !== bancomediaChatId) return;
+
+    const arg = ctx.match?.trim().toLowerCase() || '';
+    const wantSenal = !arg || arg === 'senal' || arg === 'señal';
+    const wantPauta = !arg || arg === 'pauta';
+
+    try {
+      let sent = false;
+      if (wantSenal) {
+        sent = await fetchLatestSenal(ctx.api, ctx.chat.id) || sent;
+      }
+      if (wantPauta) {
+        sent = await fetchLatestPauta(ctx.api, ctx.chat.id) || sent;
+      }
+      if (!sent) {
+        await ctx.reply('No encontré publicaciones recientes.');
+      }
+    } catch (err: any) {
+      console.error(JSON.stringify({
+        event: 'ultimo_error',
+        error: err?.message || String(err),
+        timestamp: new Date().toISOString(),
+      }));
+      await ctx.reply('Error al obtener la última publicación.');
+    }
   });
 
   // RSS pollers for Bancomedia channel

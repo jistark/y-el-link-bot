@@ -355,6 +355,42 @@ function scheduleNext(api: Api, chatId: number, posted: Set<string>) {
   }, delay);
 }
 
+// Fetch and send the latest Señal item (for manual /ultimo command)
+export async function fetchLatestSenal(api: Api, chatId: number): Promise<boolean> {
+  const xml = await fetchRssFeed();
+  const items = parseItems(xml);
+
+  // Find first item with media
+  const item = items.find(i => {
+    const m = extractMediaLinks(i.contentEncoded);
+    return m.vimeoId || m.fotosLink;
+  });
+
+  if (!item) return false;
+
+  const media = extractMediaLinks(item.contentEncoded);
+  const caption = formatCaption(item, media);
+  const photos = await getPhotos(media);
+
+  if (photos.length >= 2) {
+    const mediaGroup = photos.map((p, i) =>
+      InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? {
+        caption,
+        parse_mode: 'HTML' as const,
+      } : {}),
+    );
+    await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true });
+  } else if (photos.length === 1) {
+    await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+      caption, parse_mode: 'HTML', disable_notification: true,
+    });
+  } else {
+    await api.sendMessage(chatId, caption, { parse_mode: 'HTML', disable_notification: true });
+  }
+
+  return true;
+}
+
 export async function startRssPoller(api: Api): Promise<void> {
   const chatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
   if (!chatId || isNaN(chatId)) {
