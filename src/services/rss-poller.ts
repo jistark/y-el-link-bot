@@ -12,17 +12,21 @@ const MAX_POSTED = 500;
 
 const POSTED_PATH = join(process.cwd(), 'data', 'rss-posted.json');
 
-// Shared in-memory set — used by both the poller and /ultimo command
-let postedGuids: Set<string> | null = null;
+// Shared in-memory set — used by both the poller and /ultimo command.
+// Memoize with Promise (not value) to prevent race condition: if /ultimo
+// fires while startRssPoller is still loading, both would see null and
+// create two independent Sets.
+let postedGuidsPromise: Promise<Set<string>> | null = null;
 
-async function getPostedGuids(): Promise<Set<string>> {
-  if (!postedGuids) postedGuids = await loadPostedGuids();
-  return postedGuids;
+function getPostedGuids(): Promise<Set<string>> {
+  if (!postedGuidsPromise) postedGuidsPromise = loadPostedGuids();
+  return postedGuidsPromise;
 }
 
 interface RssItem {
   guid: string;
   title: string;
+  link: string;
   contentEncoded: string;
 }
 
@@ -132,12 +136,14 @@ function parseItems(xml: string): RssItem[] {
 
     const titleMatch = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
     const guidMatch = block.match(/<guid[^>]*>([\s\S]*?)<\/guid>/);
+    const linkMatch = block.match(/<link>([\s\S]*?)<\/link>/);
     const contentMatch = block.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/);
 
     if (titleMatch && guidMatch && contentMatch) {
       items.push({
         guid: guidMatch[1].trim(),
         title: decodeEntities(titleMatch[1].trim()),
+        link: linkMatch?.[1]?.trim() || '',
         contentEncoded: contentMatch[1],
       });
     }
@@ -149,8 +155,10 @@ function parseItems(xml: string): RssItem[] {
 function extractMediaLinks(html: string): MediaLinks {
   const vimeoMatch = html.match(/player\.vimeo\.com\/video\/(\d+)/);
 
-  const fotosMatch = html.match(/Link de descarga Fotos:\s*<a\s+href="([^"]+)"/);
-  const videoMatch = html.match(/Link de descarga Video(?:\s*HD)?:\s*<a\s+href="([^"]+)"/);
+  // Allow any HTML tags (e.g. </span>) between label text and <a> tag —
+  // Gmail-to-WordPress pipeline wraps labels in <span> elements.
+  const fotosMatch = html.match(/Link de descarga Fotos:[\s\S]*?<a\s[^>]*href="([^"]+)"/);
+  const videoMatch = html.match(/Link de descarga Video(?:\s*HD)?:[\s\S]*?<a\s[^>]*href="([^"]+)"/);
   const claveMatch = html.match(/Clave de Descarga:\s*([A-Za-z0-9]+)/);
 
   return {
@@ -161,16 +169,16 @@ function extractMediaLinks(html: string): MediaLinks {
   };
 }
 
-// Fetch Vimeo thumbnail via oEmbed
+// Vimeo thumbnail via direct CDN URL pattern — works for domain-restricted
+// videos where oEmbed returns no thumbnail (domain_status_code 403).
 async function getVimeoThumbnail(vimeoId: string): Promise<string | null> {
+  const url = `https://i.vimeocdn.com/video/${vimeoId}_1280x720.jpg`;
   try {
-    const res = await fetch(
-      `https://vimeo.com/api/oembed.json?url=https://vimeo.com/${vimeoId}`,
-      { signal: AbortSignal.timeout(10_000) }
-    );
-    if (!res.ok) return null;
-    const data = await res.json() as any;
-    return data.thumbnail_url || null;
+    const res = await fetch(url, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(10_000),
+    });
+    return res.ok ? url : null;
   } catch {
     return null;
   }
@@ -242,8 +250,12 @@ function formatCaption(item: RssItem, media: MediaLinks): string {
     lines.push(`\u{1F511} Clave: ${media.clave}`);
   }
 
+  if (item.link) {
+    lines.push(`\u{1F3AC} <a href="${escapeHtml(item.link)}">Video</a>`);
+  }
+
   if (media.videoLink) {
-    lines.push(`\u{1F3AC} <a href="${escapeHtml(media.videoLink)}">Video HD</a>`);
+    lines.push(`\u{2B07}\u{FE0F} <a href="${escapeHtml(media.videoLink)}">Video HD</a>`);
   }
 
   if (media.fotosLink) {
@@ -276,6 +288,17 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
 
   for (const item of newItems) {
     const media = extractMediaLinks(item.contentEncoded);
+
+    // Log extraction results so format changes are caught early
+    if (media.vimeoId && (!media.fotosLink || !media.videoLink || !media.clave)) {
+      console.log(JSON.stringify({
+        event: 'rss_media_partial',
+        guid: item.guid,
+        title: item.title,
+        has: { vimeo: !!media.vimeoId, fotos: !!media.fotosLink, video: !!media.videoLink, clave: !!media.clave },
+        timestamp: new Date().toISOString(),
+      }));
+    }
 
     // Skip items with no media (mark as posted to avoid re-evaluation)
     if (!media.vimeoId && !media.fotosLink) {

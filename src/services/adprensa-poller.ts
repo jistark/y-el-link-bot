@@ -14,12 +14,13 @@ const ITEM_DELAY = 3_000;
 
 const POSTED_PATH = join(process.cwd(), 'data', 'adprensa-posted.json');
 
-// Shared in-memory set — used by both the poller and /ultimo command
-let postedGuids: Set<string> | null = null;
+// Shared in-memory set — used by both the poller and /ultimo command.
+// Memoize with Promise (not value) to prevent race condition at startup.
+let postedGuidsPromise: Promise<Set<string>> | null = null;
 
-async function getPostedGuids(): Promise<Set<string>> {
-  if (!postedGuids) postedGuids = await loadPostedGuids();
-  return postedGuids;
+function getPostedGuids(): Promise<Set<string>> {
+  if (!postedGuidsPromise) postedGuidsPromise = loadPostedGuids();
+  return postedGuidsPromise;
 }
 
 interface RssItem {

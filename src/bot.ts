@@ -1354,8 +1354,10 @@ export function createBot(token: string): Bot {
   });
 
   // RSS pollers for Bancomedia channel
-  startRssPoller(bot.api);
-  startAdprensaPoller(bot.api);
+  startRssPoller(bot.api).catch(err =>
+    console.error(JSON.stringify({ event: 'rss_poller_fatal', error: err?.message || String(err), timestamp: new Date().toISOString() })));
+  startAdprensaPoller(bot.api).catch(err =>
+    console.error(JSON.stringify({ event: 'adprensa_poller_fatal', error: err?.message || String(err), timestamp: new Date().toISOString() })));
 
   return bot;
 }
