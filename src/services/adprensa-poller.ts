@@ -5,6 +5,7 @@ import type { Api } from 'grammy';
 import type { Article } from '../types.js';
 import { createPage, deletePage } from '../formatters/telegraph.js';
 import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
+import { addRegistryEntry } from './registry.js';
 
 const RSS_FEED_URL = 'https://adprensa.cl/feed/';
 const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -206,6 +207,17 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
 
       posted.add(item.guid);
       await savePostedGuids(posted);
+
+      // Persist to registry (survives redeploys)
+      addRegistryEntry({
+        type: 'rss-adprensa',
+        originalUrl: item.link,
+        guid: item.guid,
+        source: 'adprensa',
+        telegraphPath: result.path,
+        title: item.title,
+        chatId,
+      }).catch(() => {}); // non-blocking
 
       await sleep(ITEM_DELAY);
     } catch (err: any) {

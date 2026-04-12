@@ -11,6 +11,7 @@ import {
 import { fetchBypass } from './extractors/fetch-bypass.js';
 import { startRssPoller, fetchLatestSenal } from './services/rss-poller.js';
 import { startAdprensaPoller, fetchLatestPauta } from './services/adprensa-poller.js';
+import { addRegistryEntry } from './services/registry.js';
 import { readFile, writeFile } from 'fs/promises';
 
 // Safe wrapper: reintenta sin message_thread_id si Telegram rechaza el thread
@@ -866,6 +867,10 @@ export function createBot(token: string): Bot {
             const result = await createPage(article);
             cache.set(`${url}#${pageData.articles[0].id}`, { result, expires: Date.now() + TTL });
             pathToUrl.set(result.path, url);
+            addRegistryEntry({
+              type: 'extractor', originalUrl: url, source: article.source,
+              telegraphPath: result.path, title: article.title, chatId: ctx.chat?.id,
+            }).catch(() => {});
             await processAndReply(ctx, url, result);
             continue;
           }
@@ -953,6 +958,16 @@ export function createBot(token: string): Bot {
 
           // Guardar en cache
           cache.set(url, { result, expires: Date.now() + TTL });
+
+          // Persist to registry (survives redeploys)
+          addRegistryEntry({
+            type: 'extractor',
+            originalUrl: url,
+            source: article.source,
+            telegraphPath: result.path,
+            title: article.title,
+            chatId: ctx.chat?.id,
+          }).catch(() => {});
 
           // Procesar el mensaje
           await processAndReply(ctx, url, result, req);

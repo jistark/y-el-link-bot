@@ -4,6 +4,7 @@ import { mkdirSync } from 'fs';
 import { InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
 import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
+import { addRegistryEntry } from './registry.js';
 
 const RSS_FEED_URL = 'https://senal.mediabanco.com/feed/';
 const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -343,6 +344,16 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
 
       posted.add(item.guid);
       await savePostedGuids(posted);
+
+      // Persist to registry (survives redeploys)
+      addRegistryEntry({
+        type: 'rss-senal',
+        originalUrl: item.link,
+        guid: item.guid,
+        source: 'senal',
+        title: item.title,
+        chatId,
+      }).catch(() => {}); // non-blocking
 
       // Pace between items to avoid Telegram rate limits
       await sleep(ITEM_DELAY);
