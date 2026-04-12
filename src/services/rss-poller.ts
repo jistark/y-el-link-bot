@@ -398,7 +398,7 @@ function scheduleNext(api: Api, chatId: number, posted: Set<string>) {
 }
 
 // Fetch and send the latest Señal item (for manual /ultimo command)
-export async function fetchLatestSenal(api: Api, chatId: number): Promise<boolean> {
+export async function fetchLatestSenal(api: Api, chatId: number, threadId?: number): Promise<boolean> {
   const xml = await fetchRssFeed();
   const items = parseItems(xml);
 
@@ -413,6 +413,7 @@ export async function fetchLatestSenal(api: Api, chatId: number): Promise<boolea
   const media = extractMediaLinks(item.contentEncoded);
   const caption = formatCaption(item, media);
   const photos = await getPhotos(media);
+  const threadOpts = threadId ? { message_thread_id: threadId } : {};
 
   if (photos.length >= 2) {
     const mediaGroup = photos.map((p, i) =>
@@ -421,15 +422,15 @@ export async function fetchLatestSenal(api: Api, chatId: number): Promise<boolea
         parse_mode: 'HTML' as const,
       } : {}),
     );
-    await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true });
+    await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
   } else if (photos.length === 1) {
     await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
-      caption, parse_mode: 'HTML', disable_notification: true,
+      caption, parse_mode: 'HTML', disable_notification: true, ...threadOpts,
     });
   } else {
     await api.sendMessage(chatId, caption, {
       parse_mode: 'HTML', disable_notification: true,
-      link_preview_options: { is_disabled: true },
+      link_preview_options: { is_disabled: true }, ...threadOpts,
     });
   }
 

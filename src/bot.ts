@@ -1348,12 +1348,13 @@ export function createBot(token: string): Bot {
     const wantPauta = !arg || arg === 'pauta';
 
     try {
+      const threadId = ctx.message?.message_thread_id;
       let sent = false;
       if (wantSenal) {
-        sent = await fetchLatestSenal(ctx.api, ctx.chat.id) || sent;
+        sent = await fetchLatestSenal(ctx.api, ctx.chat.id, threadId) || sent;
       }
       if (wantPauta) {
-        sent = await fetchLatestPauta(ctx.api, ctx.chat.id) || sent;
+        sent = await fetchLatestPauta(ctx.api, ctx.chat.id, threadId) || sent;
       }
       if (!sent) {
         await ctx.reply('No encontré publicaciones recientes.');
@@ -1435,11 +1436,40 @@ async function processAndReply(
       }
     }
   } else {
-    // Sin pending request (cache hit)
-    await ctx.reply(messageText, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard,
-      reply_to_message_id: ctx.msg?.message_id,
-    });
+    // Sin pending request (cache hit) — apply the same thread guards as pending path
+    const replyToId = ctx.message?.reply_to_message?.message_id;
+    const threadId = ctx.msg?.message_thread_id;
+    const chatId = ctx.chat!.id;
+
+    if (replyToId) {
+      // Nested reply with cached URL — delete user msg, reply to original target
+      const mention = ctx.from?.username
+        ? `@${ctx.from.username}`
+        : `<a href="tg://user?id=${ctx.from?.id}">${escapeHtml(ctx.from?.first_name || 'Usuario')}</a>`;
+      const extraText = getTextWithoutUrls(ctx.message?.text || '');
+      messageText = extraText
+        ? `${mention}: ${escapeHtml(extraText)}\n\n${result.url}`
+        : `${mention} compartió:\n${result.url}`;
+
+      try { await ctx.api.deleteMessage(chatId, ctx.msg!.message_id); } catch { /* ok */ }
+
+      // Guard sameId: if reply target IS the topic header, omit message_thread_id
+      const sameId = replyToId === threadId;
+      const threadOpts = sameId ? {} : (threadId ? { message_thread_id: threadId } : {});
+
+      await safeSendMessage(ctx.api, chatId, messageText, {
+        ...threadOpts,
+        parse_mode: 'HTML',
+        reply_markup: keyboard,
+        reply_to_message_id: replyToId,
+      });
+    } else {
+      // Direct message (not a reply) — middleware handles thread injection via ctx.reply()
+      await ctx.reply(messageText, {
+        parse_mode: 'HTML',
+        reply_markup: keyboard,
+        reply_to_message_id: ctx.msg?.message_id,
+      });
+    }
   }
 }

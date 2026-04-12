@@ -260,7 +260,7 @@ function scheduleNext(api: Api, chatId: number, posted: Set<string>) {
 }
 
 // Fetch and send the latest Pauta item (for manual /ultimo command)
-export async function fetchLatestPauta(api: Api, chatId: number): Promise<boolean> {
+export async function fetchLatestPauta(api: Api, chatId: number, threadId?: number): Promise<boolean> {
   const xml = await fetchRssFeed();
   const allItems = parseItems(xml);
   const item = allItems.find(i => i.categories.includes('Pauta'));
@@ -290,6 +290,7 @@ export async function fetchLatestPauta(api: Api, chatId: number): Promise<boolea
   await api.sendMessage(chatId, result.url, {
     disable_notification: true,
     link_preview_options: { is_disabled: true },
+    ...(threadId ? { message_thread_id: threadId } : {}),
   });
 
   // Mark as posted in shared set so the poller doesn't duplicate it
