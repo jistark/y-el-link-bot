@@ -1,35 +1,18 @@
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { mkdirSync } from 'fs';
-import { InputFile, InputMediaBuilder } from 'grammy';
+import { InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
-import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
+import { randomUA, decodeEntities, sendWithRetry } from '../utils/shared.js';
 import { addRegistryEntry } from './registry.js';
+import { createPoller } from './poller-base.js';
+import type { BaseRssItem } from './poller-base.js';
 
-const RSS_FEED_URL = 'https://senal.mediabanco.com/feed/';
-const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutes
-const JITTER = 3 * 60 * 1000;         // ±3 minutes
-const MAX_POSTED = 500;
+// --- Types ---
 
-const POSTED_PATH = join(process.cwd(), 'data', 'rss-posted.json');
-
-// Shared in-memory set — used by both the poller and /ultimo command.
-// Memoize with Promise (not value) to prevent race condition: if /ultimo
-// fires while startRssPoller is still loading, both would see null and
-// create two independent Sets.
-let postedGuidsPromise: Promise<Set<string>> | null = null;
-
-function getPostedGuids(): Promise<Set<string>> {
-  if (!postedGuidsPromise) postedGuidsPromise = loadPostedGuids();
-  return postedGuidsPromise;
+export interface SenalRssItem extends BaseRssItem {
+  // BaseRssItem already covers guid, title, link, contentEncoded
 }
 
-interface RssItem {
-  guid: string;
-  title: string;
-  link: string;
-  contentEncoded: string;
-}
+// Alias used internally — the renamed type was exported for external use
+type RssItem = SenalRssItem;
 
 interface MediaLinks {
   vimeoId: string | null;
@@ -42,34 +25,6 @@ interface WtFile {
   id: string;
   name: string;
   size: number;
-}
-
-// --- Persistence ---
-
-async function loadPostedGuids(): Promise<Set<string>> {
-  try {
-    const data = await readFile(POSTED_PATH, 'utf-8');
-    return new Set(JSON.parse(data));
-  } catch {
-    return new Set();
-  }
-}
-
-async function savePostedGuids(guids: Set<string>): Promise<void> {
-  try { mkdirSync(join(process.cwd(), 'data'), { recursive: true }); } catch { /* ok */ }
-  const arr = [...guids].slice(-MAX_POSTED);
-  await writeFile(POSTED_PATH, JSON.stringify(arr), 'utf-8');
-}
-
-// --- RSS Fetching ---
-
-async function fetchRssFeed(): Promise<string> {
-  const res = await fetch(RSS_FEED_URL, {
-    headers: { 'User-Agent': randomUA() },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
-  return res.text();
 }
 
 // --- WeTransfer ---
@@ -123,12 +78,17 @@ async function getWetransferFileUrl(transferId: string, securityHash: string, pa
   return data.direct_link || null;
 }
 
+// --- Regen keyboard ---
+
+function createRssRegenKeyboard(source: string, guid: string): InlineKeyboard {
+  const guidHash = guid.slice(0, 20);
+  return new InlineKeyboard().text('\u{1F504}', `regen_rss:${source}:${guidHash}`);
+}
 
 // --- RSS Parsing ---
 
-
-function parseItems(xml: string): RssItem[] {
-  const items: RssItem[] = [];
+export function parseSenalItems(xml: string): SenalRssItem[] {
+  const items: SenalRssItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
 
@@ -153,7 +113,9 @@ function parseItems(xml: string): RssItem[] {
   return items;
 }
 
-function extractMediaLinks(html: string): MediaLinks {
+// --- Media extraction ---
+
+export function extractMediaLinks(html: string): MediaLinks {
   const vimeoMatch = html.match(/player\.vimeo\.com\/video\/(\d+)/);
 
   // Allow any HTML tags (e.g. </span>) between label text and <a> tag —
@@ -189,7 +151,7 @@ const MAX_PHOTOS = 10; // Telegram sendMediaGroup limit
 const MAX_PHOTO_SIZE = 9 * 1024 * 1024; // 9 MB safety margin (Telegram limit is 10 MB)
 
 // Get photos: Vimeo thumbnail as first, then WeTransfer photos
-async function getPhotos(media: MediaLinks): Promise<{ buf: Uint8Array; name: string }[]> {
+export async function getPhotos(media: MediaLinks): Promise<{ buf: Uint8Array; name: string }[]> {
   const photos: { buf: Uint8Array; name: string }[] = [];
 
   // Try Vimeo thumbnail as lead photo
@@ -243,7 +205,7 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function formatCaption(item: RssItem, media: MediaLinks): string {
+export function formatCaption(item: SenalRssItem, media: MediaLinks): string {
   const lines: string[] = [];
   lines.push(`\u{1F4F9} <b>${escapeHtml(item.title)}</b>`);
 
@@ -266,28 +228,18 @@ function formatCaption(item: RssItem, media: MediaLinks): string {
   return lines.join('\n');
 }
 
-// --- Telegram helpers ---
+// --- Poller instance ---
 
-const ITEM_DELAY = 3_000; // 3s between items to avoid rate limits
-
-// --- Core ---
-
-async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<void> {
-  const xml = await fetchRssFeed();
-  const items = parseItems(xml);
-
-  // Process oldest-first so channel shows them in chronological order
-  const newItems = items.filter(item => !posted.has(item.guid)).reverse();
-
-  if (newItems.length === 0) return;
-
-  console.log(JSON.stringify({
-    event: 'rss_new_items',
-    count: newItems.length,
-    timestamp: new Date().toISOString(),
-  }));
-
-  for (const item of newItems) {
+const poller = createPoller<SenalRssItem>({
+  name: 'rss',
+  feedUrl: 'https://senal.mediabanco.com/feed/',
+  postedPath: 'data/rss-posted.json',
+  parseItems: parseSenalItems,
+  filterNew(items, posted) {
+    // Process oldest-first so channel shows them in chronological order
+    return items.filter(item => !posted.has(item.guid)).reverse();
+  },
+  async processItem(api, chatId, item, posted, save) {
     const media = extractMediaLinks(item.contentEncoded);
 
     // Log extraction results so format changes are caught early
@@ -304,103 +256,84 @@ async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<
     // Skip items with no media (mark as posted to avoid re-evaluation)
     if (!media.vimeoId && !media.fotosLink) {
       posted.add(item.guid);
-      continue;
+      return;
     }
 
     const caption = formatCaption(item, media);
+    const photos = await getPhotos(media);
+    const keyboard = createRssRegenKeyboard('senal', item.guid);
+    let messageId: number | undefined;
 
-    try {
-      const photos = await getPhotos(media);
-
-      if (photos.length >= 2) {
-        // Send as media group (album) — caption on first photo
-        const mediaGroup = photos.map((p, i) =>
-          InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? {
-            caption,
-            parse_mode: 'HTML',
-          } : {}),
-        );
-        await sendWithRetry(
-          () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
-          'sendMediaGroup', 'rss',
-        );
-      } else if (photos.length === 1) {
-        // Single photo
-        await sendWithRetry(
-          () => api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
-            caption,
-            parse_mode: 'HTML',
-            disable_notification: true,
-          }),
-          'sendPhoto', 'rss',
-        );
-      } else {
-        // No photos — text-only
-        await sendWithRetry(
-          () => api.sendMessage(chatId, caption, { parse_mode: 'HTML', disable_notification: true }),
-          'sendMessage', 'rss',
-        );
-      }
-
-      posted.add(item.guid);
-      await savePostedGuids(posted);
-
-      // Persist to registry (survives redeploys)
-      addRegistryEntry({
-        type: 'rss-senal',
-        originalUrl: item.link,
-        guid: item.guid,
-        source: 'senal',
-        title: item.title,
-        chatId,
-      }).catch(() => {}); // non-blocking
-
-      // Pace between items to avoid Telegram rate limits
-      await sleep(ITEM_DELAY);
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'rss_send_error',
-        guid: item.guid,
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-      // On persistent failure, still pace before next item
-      await sleep(ITEM_DELAY);
+    if (photos.length >= 2) {
+      // Send as media group (album) — caption on first photo
+      const mediaGroup = photos.map((p, i) =>
+        InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? {
+          caption,
+          parse_mode: 'HTML',
+        } : {}),
+      );
+      const sent = await sendWithRetry(
+        () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
+        'sendMediaGroup', 'rss',
+      );
+      // Media groups return array of messages — use first one's ID
+      messageId = sent[0]?.message_id;
+      // Media groups can't have inline keyboards, so send a follow-up with the regen button
+      await sendWithRetry(
+        () => api.sendMessage(chatId, '\u{1F504}', {
+          disable_notification: true,
+          reply_markup: keyboard,
+          reply_to_message_id: messageId,
+        }),
+        'sendMessage', 'rss',
+      );
+    } else if (photos.length === 1) {
+      // Single photo with regen keyboard
+      const sent = await sendWithRetry(
+        () => api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+          caption,
+          parse_mode: 'HTML',
+          disable_notification: true,
+          reply_markup: keyboard,
+        }),
+        'sendPhoto', 'rss',
+      );
+      messageId = sent.message_id;
+    } else {
+      // No photos — text-only with regen keyboard
+      const sent = await sendWithRetry(
+        () => api.sendMessage(chatId, caption, {
+          parse_mode: 'HTML',
+          disable_notification: true,
+          reply_markup: keyboard,
+        }),
+        'sendMessage', 'rss',
+      );
+      messageId = sent.message_id;
     }
-  }
-}
 
-// --- Scheduler ---
+    posted.add(item.guid);
+    await save();
 
-function scheduleNext(api: Api, chatId: number, posted: Set<string>) {
-  const jitter = (Math.random() * 2 - 1) * JITTER;
-  const delay = BASE_INTERVAL + jitter;
-  const minutes = (delay / 60_000).toFixed(1);
+    // Persist to registry (survives redeploys)
+    addRegistryEntry({
+      type: 'rss-senal',
+      originalUrl: item.link,
+      guid: item.guid,
+      source: 'senal',
+      title: item.title,
+      chatId,
+      messageId,
+    }).catch(() => {}); // non-blocking
+  },
+});
 
-  console.log(JSON.stringify({
-    event: 'rss_next_poll',
-    delayMinutes: minutes,
-    timestamp: new Date().toISOString(),
-  }));
+// --- Public API (unchanged signatures) ---
 
-  setTimeout(async () => {
-    try {
-      await pollOnce(api, chatId, posted);
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'rss_poll_error',
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-    }
-    scheduleNext(api, chatId, posted);
-  }, delay);
-}
-
-// Fetch and send the latest Señal item (for manual /ultimo command)
+// Fetch and send the latest Senal item (for manual /ultimo command)
 export async function fetchLatestSenal(api: Api, chatId: number, threadId?: number): Promise<boolean> {
-  const xml = await fetchRssFeed();
-  const items = parseItems(xml);
+  const xml = await poller.fetchRssFeed();
+  const items = parseSenalItems(xml);
 
   // Find first item with media
   const item = items.find(i => {
@@ -414,6 +347,8 @@ export async function fetchLatestSenal(api: Api, chatId: number, threadId?: numb
   const caption = formatCaption(item, media);
   const photos = await getPhotos(media);
   const threadOpts = threadId ? { message_thread_id: threadId } : {};
+  const keyboard = createRssRegenKeyboard('senal', item.guid);
+  let messageId: number | undefined;
 
   if (photos.length >= 2) {
     const mediaGroup = photos.map((p, i) =>
@@ -422,77 +357,51 @@ export async function fetchLatestSenal(api: Api, chatId: number, threadId?: numb
         parse_mode: 'HTML' as const,
       } : {}),
     );
-    await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
-  } else if (photos.length === 1) {
-    await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
-      caption, parse_mode: 'HTML', disable_notification: true, ...threadOpts,
+    const sent = await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
+    messageId = sent[0]?.message_id;
+    // Media groups can't have inline keyboards, send a follow-up regen button
+    await api.sendMessage(chatId, '\u{1F504}', {
+      disable_notification: true,
+      reply_markup: keyboard,
+      reply_to_message_id: messageId,
+      ...threadOpts,
     });
+  } else if (photos.length === 1) {
+    const sent = await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+      caption, parse_mode: 'HTML', disable_notification: true, reply_markup: keyboard, ...threadOpts,
+    });
+    messageId = sent.message_id;
   } else {
-    await api.sendMessage(chatId, caption, {
-      parse_mode: 'HTML', disable_notification: true,
+    const sent = await api.sendMessage(chatId, caption, {
+      parse_mode: 'HTML', disable_notification: true, reply_markup: keyboard,
       link_preview_options: { is_disabled: true }, ...threadOpts,
     });
+    messageId = sent.message_id;
   }
 
   // Mark as posted in shared set so the poller doesn't duplicate it
-  const posted = await getPostedGuids();
+  const posted = await poller.getPostedGuids();
   posted.add(item.guid);
-  await savePostedGuids(posted);
+  await poller.savePostedGuids(posted);
+
+  // Persist to registry
+  addRegistryEntry({
+    type: 'rss-senal',
+    originalUrl: item.link,
+    guid: item.guid,
+    source: 'senal',
+    title: item.title,
+    chatId,
+    messageId,
+  }).catch(() => {});
 
   return true;
 }
 
+export async function fetchSenalFeed(): Promise<string> {
+  return poller.fetchRssFeed();
+}
+
 export async function startRssPoller(api: Api): Promise<void> {
-  const chatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
-  if (!chatId || isNaN(chatId)) {
-    console.log(JSON.stringify({
-      event: 'rss_poller_disabled',
-      reason: 'BANCOMEDIA_CHAT_ID not set',
-      timestamp: new Date().toISOString(),
-    }));
-    return;
-  }
-
-  const posted = await getPostedGuids();
-
-  console.log(JSON.stringify({
-    event: 'rss_poller_started',
-    chatId,
-    knownGuids: posted.size,
-    timestamp: new Date().toISOString(),
-  }));
-
-  // On cold start (no persisted GUIDs), seed with current feed to avoid reposting
-  if (posted.size === 0) {
-    try {
-      const xml = await fetchRssFeed();
-      const items = parseItems(xml);
-      for (const item of items) posted.add(item.guid);
-      await savePostedGuids(posted);
-      console.log(JSON.stringify({
-        event: 'rss_seeded',
-        count: items.length,
-        timestamp: new Date().toISOString(),
-      }));
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'rss_seed_error',
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-    }
-  } else {
-    // Normal first poll
-    try {
-      await pollOnce(api, chatId, posted);
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'rss_initial_poll_error',
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-    }
-  }
-
-  scheduleNext(api, chatId, posted);
+  return poller.start(api);
 }

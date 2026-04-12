@@ -1,71 +1,23 @@
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { mkdirSync } from 'fs';
+import { InlineKeyboard } from 'grammy';
 import type { Api } from 'grammy';
 import type { Article } from '../types.js';
 import { createPage, deletePage } from '../formatters/telegraph.js';
-import { randomUA, decodeEntities, sleep, sendWithRetry } from '../utils/shared.js';
+import { decodeEntities, sendWithRetry } from '../utils/shared.js';
 import { addRegistryEntry } from './registry.js';
+import { createPoller } from './poller-base.js';
+import type { BaseRssItem } from './poller-base.js';
 
-const RSS_FEED_URL = 'https://adprensa.cl/feed/';
-const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutes
-const JITTER = 3 * 60 * 1000;         // ±3 minutes
-const MAX_POSTED = 500;
-const ITEM_DELAY = 3_000;
+// --- Types ---
 
-const POSTED_PATH = join(process.cwd(), 'data', 'adprensa-posted.json');
-
-// Shared in-memory set — used by both the poller and /ultimo command.
-// Memoize with Promise (not value) to prevent race condition at startup.
-let postedGuidsPromise: Promise<Set<string>> | null = null;
-
-function getPostedGuids(): Promise<Set<string>> {
-  if (!postedGuidsPromise) postedGuidsPromise = loadPostedGuids();
-  return postedGuidsPromise;
-}
-
-interface RssItem {
-  guid: string;
-  title: string;
-  link: string;
-  contentEncoded: string;
+export interface AdprensaRssItem extends BaseRssItem {
   pubDate: string;
   categories: string[];
 }
 
-// --- Persistence ---
-
-async function loadPostedGuids(): Promise<Set<string>> {
-  try {
-    const data = await readFile(POSTED_PATH, 'utf-8');
-    return new Set(JSON.parse(data));
-  } catch {
-    return new Set();
-  }
-}
-
-async function savePostedGuids(guids: Set<string>): Promise<void> {
-  try { mkdirSync(join(process.cwd(), 'data'), { recursive: true }); } catch { /* ok */ }
-  const arr = [...guids].slice(-MAX_POSTED);
-  await writeFile(POSTED_PATH, JSON.stringify(arr), 'utf-8');
-}
-
-// --- Fetching ---
-
-async function fetchRssFeed(): Promise<string> {
-  const res = await fetch(RSS_FEED_URL, {
-    headers: { 'User-Agent': randomUA() },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`AdPrensa RSS fetch failed: ${res.status}`);
-  return res.text();
-}
-
 // --- Parsing ---
 
-
-function parseItems(xml: string): RssItem[] {
-  const items: RssItem[] = [];
+export function parseAdprensaItems(xml: string): AdprensaRssItem[] {
+  const items: AdprensaRssItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
 
@@ -101,18 +53,23 @@ function parseItems(xml: string): RssItem[] {
   return items;
 }
 
-// --- Telegram helpers ---
+// --- Regen keyboard ---
 
+function createRssRegenKeyboard(source: string, guid: string): InlineKeyboard {
+  // Use first 20 chars of guid to stay under 64-byte Telegram callback_data limit
+  const guidHash = guid.slice(0, 20);
+  return new InlineKeyboard().text('\u{1F504}', `regen_rss:${source}:${guidHash}`);
+}
 
 // --- Content preprocessing ---
 
 // Detect if content is a contact list (table with emails/phones)
-function isContactList(html: string): boolean {
+export function isContactList(html: string): boolean {
   return /<table[\s>]/i.test(html) && /(?:e-?mail|fono|celular)/i.test(html);
 }
 
-// Transform pauta/agenda content: sections → headings, dash-items → lists
-function preprocessPautaContent(html: string): string {
+// Transform pauta/agenda content: sections -> headings, dash-items -> lists
+export function preprocessPautaContent(html: string): string {
   let result = html;
 
   // Pattern 1: ==== lines wrapping a section title (strong or plain)
@@ -124,16 +81,16 @@ function preprocessPautaContent(html: string): string {
   );
 
   // Pattern 2: ——— lines wrapping a subsection title
-  // <p>———————<br />\nATENCIÓN CON<br />\n———————</p>
+  // <p>———————<br />\nATENCION CON<br />\n———————</p>
   result = result.replace(
     /<p>\s*(?:<strong>)?[—–\-]{3,}(?:<\/strong>)?\s*<br\s*\/?>\s*(?:<strong>)?([\s\S]*?)(?:<\/strong>)?\s*<br\s*\/?>\s*(?:<strong>)?[—–\-]{3,}(?:<\/strong>)?\s*<\/p>/gi,
     (_match, title) => `<h4>${title.trim()}</h4>`
   );
 
-  // Pattern 3: Standalone separator lines (just dashes) → remove
+  // Pattern 3: Standalone separator lines (just dashes) -> remove
   result = result.replace(/<p>\s*(?:<strong>)?[—–\-=]{3,}(?:<\/strong>)?\s*<\/p>/gi, '');
 
-  // Pattern 4: Paragraphs starting with - → list items, group consecutive ones
+  // Pattern 4: Paragraphs starting with - -> list items, group consecutive ones
   // First, convert individual -items to <li>
   result = result.replace(
     /<p>\s*[-–]\s*([\s\S]*?)\s*<\/p>/gi,
@@ -149,120 +106,84 @@ function preprocessPautaContent(html: string): string {
   return result;
 }
 
-// --- Core ---
+// --- Poller instance ---
 
-async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<void> {
-  const xml = await fetchRssFeed();
-  const allItems = parseItems(xml);
+const poller = createPoller<AdprensaRssItem>({
+  name: 'adprensa',
+  feedUrl: 'https://adprensa.cl/feed/',
+  postedPath: 'data/adprensa-posted.json',
+  parseItems: parseAdprensaItems,
+  filterNew(items, posted) {
+    // Filter: only "Pauta" category, then oldest-first
+    return items.filter(item => item.categories.includes('Pauta') && !posted.has(item.guid)).reverse();
+  },
+  async processItem(api, chatId, item, posted, save) {
+    const contactList = isContactList(item.contentEncoded);
+    const body = contactList ? item.contentEncoded : preprocessPautaContent(item.contentEncoded);
 
-  // Filter: only "Pauta" category
-  const pautaItems = allItems.filter(item => item.categories.includes('Pauta'));
+    // Build Article for Telegraph
+    const article: Article = {
+      title: item.title,
+      body,
+      url: item.link,
+      source: 'adprensa',
+      date: item.pubDate,
+    };
 
-  // Process oldest-first
-  const newItems = pautaItems.filter(item => !posted.has(item.guid)).reverse();
+    // Create Telegraph page
+    const result = await createPage(article);
 
-  if (newItems.length === 0) return;
-
-  console.log(JSON.stringify({
-    event: 'adprensa_new_items',
-    count: newItems.length,
-    timestamp: new Date().toISOString(),
-  }));
-
-  for (const item of newItems) {
-    try {
-      const contactList = isContactList(item.contentEncoded);
-      const body = contactList ? item.contentEncoded : preprocessPautaContent(item.contentEncoded);
-
-      // Build Article for Telegraph
-      const article: Article = {
-        title: item.title,
-        body,
-        url: item.link,
-        source: 'adprensa',
-        date: item.pubDate,
-      };
-
-      // Create Telegraph page
-      const result = await createPage(article);
-
-      // Contact lists expire after 72h (contain emails/phones)
-      if (contactList) {
-        const LISTADO_TTL = 72 * 60 * 60 * 1000;
-        setTimeout(() => {
-          deletePage(result.path).catch(() => {});
-          console.log(JSON.stringify({
-            event: 'adprensa_listado_expired',
-            path: result.path,
-            timestamp: new Date().toISOString(),
-          }));
-        }, LISTADO_TTL);
-      }
-
-      // Post Telegraph link to channel
-      await sendWithRetry(
-        () => api.sendMessage(chatId, result.url, { disable_notification: true }),
-        'sendMessage', 'adprensa',
-      );
-
-      posted.add(item.guid);
-      await savePostedGuids(posted);
-
-      // Persist to registry (survives redeploys)
-      addRegistryEntry({
-        type: 'rss-adprensa',
-        originalUrl: item.link,
-        guid: item.guid,
-        source: 'adprensa',
-        telegraphPath: result.path,
-        title: item.title,
-        chatId,
-      }).catch(() => {}); // non-blocking
-
-      await sleep(ITEM_DELAY);
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'adprensa_send_error',
-        guid: item.guid,
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-      await sleep(ITEM_DELAY);
+    // Contact lists expire after 72h (contain emails/phones)
+    if (contactList) {
+      const LISTADO_TTL = 72 * 60 * 60 * 1000;
+      setTimeout(() => {
+        deletePage(result.path).catch(() => {});
+        console.log(JSON.stringify({
+          event: 'adprensa_listado_expired',
+          path: result.path,
+          timestamp: new Date().toISOString(),
+        }));
+      }, LISTADO_TTL);
     }
-  }
+
+    // Post Telegraph link to channel with regen button
+    const keyboard = createRssRegenKeyboard('adprensa', item.guid);
+    const sent = await sendWithRetry(
+      () => api.sendMessage(chatId, result.url, {
+        disable_notification: true,
+        reply_markup: keyboard,
+      }),
+      'sendMessage', 'adprensa',
+    );
+
+    posted.add(item.guid);
+    await save();
+
+    // Persist to registry (survives redeploys)
+    addRegistryEntry({
+      type: 'rss-adprensa',
+      originalUrl: item.link,
+      guid: item.guid,
+      source: 'adprensa',
+      telegraphPath: result.path,
+      title: item.title,
+      chatId,
+      messageId: sent.message_id,
+    }).catch(() => {}); // non-blocking
+  },
+});
+
+// Re-export for external callers that need raw feed access
+export async function fetchAdprensaFeed(): Promise<string> {
+  return poller.fetchRssFeed();
 }
 
-// --- Scheduler ---
-
-function scheduleNext(api: Api, chatId: number, posted: Set<string>) {
-  const jitter = (Math.random() * 2 - 1) * JITTER;
-  const delay = BASE_INTERVAL + jitter;
-  const minutes = (delay / 60_000).toFixed(1);
-
-  console.log(JSON.stringify({
-    event: 'adprensa_next_poll',
-    delayMinutes: minutes,
-    timestamp: new Date().toISOString(),
-  }));
-
-  setTimeout(async () => {
-    try {
-      await pollOnce(api, chatId, posted);
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'adprensa_poll_error',
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-    }
-    scheduleNext(api, chatId, posted);
-  }, delay);
-}
+// --- Public API (unchanged signatures) ---
 
 // Fetch and send the latest Pauta item (for manual /ultimo command)
 export async function fetchLatestPauta(api: Api, chatId: number, threadId?: number): Promise<boolean> {
-  const xml = await fetchRssFeed();
-  const allItems = parseItems(xml);
+  const xml = await poller.fetchRssFeed();
+  const allItems = parseAdprensaItems(xml);
   const item = allItems.find(i => i.categories.includes('Pauta'));
 
   if (!item) return false;
@@ -287,71 +208,34 @@ export async function fetchLatestPauta(api: Api, chatId: number, threadId?: numb
     }, LISTADO_TTL);
   }
 
-  await api.sendMessage(chatId, result.url, {
+  const keyboard = createRssRegenKeyboard('adprensa', item.guid);
+  const sent = await api.sendMessage(chatId, result.url, {
     disable_notification: true,
     link_preview_options: { is_disabled: true },
+    reply_markup: keyboard,
     ...(threadId ? { message_thread_id: threadId } : {}),
   });
 
   // Mark as posted in shared set so the poller doesn't duplicate it
-  const posted = await getPostedGuids();
+  const posted = await poller.getPostedGuids();
   posted.add(item.guid);
-  await savePostedGuids(posted);
+  await poller.savePostedGuids(posted);
+
+  // Persist to registry
+  addRegistryEntry({
+    type: 'rss-adprensa',
+    originalUrl: item.link,
+    guid: item.guid,
+    source: 'adprensa',
+    telegraphPath: result.path,
+    title: item.title,
+    chatId,
+    messageId: sent.message_id,
+  }).catch(() => {});
 
   return true;
 }
 
 export async function startAdprensaPoller(api: Api): Promise<void> {
-  const chatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
-  if (!chatId || isNaN(chatId)) {
-    console.log(JSON.stringify({
-      event: 'adprensa_poller_disabled',
-      reason: 'BANCOMEDIA_CHAT_ID not set',
-      timestamp: new Date().toISOString(),
-    }));
-    return;
-  }
-
-  const posted = await getPostedGuids();
-
-  console.log(JSON.stringify({
-    event: 'adprensa_poller_started',
-    chatId,
-    knownGuids: posted.size,
-    timestamp: new Date().toISOString(),
-  }));
-
-  // On cold start, seed ALL items to avoid reposting after deploy
-  if (posted.size === 0) {
-    try {
-      const xml = await fetchRssFeed();
-      const items = parseItems(xml);
-      for (const item of items) posted.add(item.guid);
-      await savePostedGuids(posted);
-      console.log(JSON.stringify({
-        event: 'adprensa_seeded',
-        count: items.length,
-        timestamp: new Date().toISOString(),
-      }));
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'adprensa_seed_error',
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-    }
-  } else {
-    // Normal first poll (not cold start)
-    try {
-      await pollOnce(api, chatId, posted);
-    } catch (err: any) {
-      console.error(JSON.stringify({
-        event: 'adprensa_initial_poll_error',
-        error: err?.message || String(err),
-        timestamp: new Date().toISOString(),
-      }));
-    }
-  }
-
-  scheduleNext(api, chatId, posted);
+  return poller.start(api);
 }

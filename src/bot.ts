@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, Context, InputFile } from 'grammy';
+import { Bot, InlineKeyboard, InputMediaBuilder, Context, InputFile } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { isPageUrl, fetchPageArticles, extractByArticleId, type PageArticleInfo } from './extractors/elmercurio.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
@@ -9,9 +9,16 @@ import {
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
 import { fetchBypass } from './extractors/fetch-bypass.js';
-import { startRssPoller, fetchLatestSenal } from './services/rss-poller.js';
-import { startAdprensaPoller, fetchLatestPauta } from './services/adprensa-poller.js';
-import { addRegistryEntry } from './services/registry.js';
+import {
+  startRssPoller, fetchLatestSenal, fetchSenalFeed,
+  parseSenalItems, extractMediaLinks, getPhotos, formatCaption,
+} from './services/rss-poller.js';
+import {
+  startAdprensaPoller, fetchLatestPauta, fetchAdprensaFeed,
+  parseAdprensaItems, preprocessPautaContent, isContactList,
+} from './services/adprensa-poller.js';
+import { startFotoportadasPoller, fetchLatestFotoportadas } from './services/fotoportadas-poller.js';
+import { addRegistryEntry, findByGuidPrefix, updateRegistryEntry } from './services/registry.js';
 import { readFile, writeFile } from 'fs/promises';
 
 // Safe wrapper: reintenta sin message_thread_id si Telegram rechaza el thread
@@ -1230,6 +1237,166 @@ export function createBot(token: string): Bot {
       return;
     }
 
+    // Regenerar item RSS (ADPrensa o Señal)
+    if (data.startsWith('regen_rss:')) {
+      const parts = data.slice(10).split(':');
+      const source = parts[0]; // 'adprensa' or 'senal'
+      const guidHash = parts[1];
+      const userId = ctx.from?.id;
+
+      // Only admins can regen RSS items
+      let canRegen = false;
+      if (ctx.chat && userId) {
+        try {
+          const member = await ctx.api.getChatMember(ctx.chat.id, userId);
+          canRegen = ['creator', 'administrator'].includes(member.status);
+        } catch {}
+      }
+      if (!canRegen) {
+        await ctx.answerCallbackQuery({ text: 'Solo admins pueden regenerar', show_alert: true });
+        return;
+      }
+
+      // Look up in registry by guid prefix
+      const entry = await findByGuidPrefix(guidHash);
+      if (!entry || !entry.guid) {
+        await ctx.answerCallbackQuery({ text: 'Item no encontrado en el registro', show_alert: true });
+        return;
+      }
+
+      await ctx.answerCallbackQuery({ text: '\u{1F504} Regenerando...' });
+
+      const chatId = ctx.callbackQuery.message?.chat.id;
+      const messageId = ctx.callbackQuery.message?.message_id;
+
+      try {
+        if (source === 'adprensa') {
+          // ADPrensa: re-fetch feed, find item, re-create Telegraph, edit message
+          const xml = await fetchAdprensaFeed();
+          const allItems = parseAdprensaItems(xml);
+          const item = allItems.find(i => i.guid === entry.guid);
+
+          if (!item) {
+            if (chatId && messageId) {
+              try { await ctx.api.editMessageText(chatId, messageId, '\u{274C} Item ya no est\u00e1 en el feed. Intenta m\u00e1s tarde.'); } catch {}
+            }
+            return;
+          }
+
+          const contactList = isContactList(item.contentEncoded);
+          const body = contactList ? item.contentEncoded : preprocessPautaContent(item.contentEncoded);
+
+          const article = {
+            title: item.title,
+            body,
+            url: item.link,
+            source: 'adprensa' as const,
+            date: item.pubDate,
+          };
+
+          const result = await createPage(article);
+
+          // Update registry with new telegraph path
+          updateRegistryEntry(entry.guid, { telegraphPath: result.path }).catch(() => {});
+
+          // Edit existing message with new Telegraph URL + regen keyboard
+          const regenKeyboard = new InlineKeyboard().text('\u{1F504}', `regen_rss:adprensa:${entry.guid.slice(0, 20)}`);
+          if (chatId && messageId) {
+            await ctx.api.editMessageText(chatId, messageId, result.url, {
+              reply_markup: regenKeyboard,
+              link_preview_options: { is_disabled: false },
+            });
+          }
+
+          console.log(JSON.stringify({
+            event: 'regen_rss_success',
+            source: 'adprensa',
+            guid: entry.guid,
+            newPath: result.path,
+            timestamp: new Date().toISOString(),
+          }));
+
+        } else if (source === 'senal') {
+          // Señal: re-fetch feed, find item, re-download media, send NEW message
+          const xml = await fetchSenalFeed();
+          const allItems = parseSenalItems(xml);
+          const item = allItems.find(i => i.guid === entry.guid);
+
+          if (!item) {
+            if (chatId && messageId) {
+              try { await ctx.api.editMessageText(chatId, messageId, '\u{274C} Item ya no est\u00e1 en el feed. Intenta m\u00e1s tarde.'); } catch {}
+            }
+            return;
+          }
+
+          const media = extractMediaLinks(item.contentEncoded);
+          const caption = formatCaption(item, media);
+          const photos = await getPhotos(media);
+          const regenKeyboard = new InlineKeyboard().text('\u{1F504}', `regen_rss:senal:${entry.guid.slice(0, 20)}`);
+
+          if (chatId) {
+            // Try to delete the old message (may fail for media groups)
+            if (messageId) {
+              try { await ctx.api.deleteMessage(chatId, messageId); } catch {}
+            }
+
+            let newMessageId: number | undefined;
+
+            if (photos.length >= 2) {
+              const mediaGroup = photos.map((p, i) =>
+                InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? { caption, parse_mode: 'HTML' as const } : {}),
+              );
+              const sent = await ctx.api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true });
+              newMessageId = sent[0]?.message_id;
+              // Follow-up regen button
+              await ctx.api.sendMessage(chatId, '\u{1F504}', {
+                disable_notification: true,
+                reply_markup: regenKeyboard,
+                reply_to_message_id: newMessageId,
+              });
+            } else if (photos.length === 1) {
+              const sent = await ctx.api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+                caption, parse_mode: 'HTML', disable_notification: true, reply_markup: regenKeyboard,
+              });
+              newMessageId = sent.message_id;
+            } else {
+              const sent = await ctx.api.sendMessage(chatId, caption, {
+                parse_mode: 'HTML', disable_notification: true, reply_markup: regenKeyboard,
+                link_preview_options: { is_disabled: true },
+              });
+              newMessageId = sent.message_id;
+            }
+
+            // Update registry with new message ID
+            if (newMessageId) {
+              updateRegistryEntry(entry.guid, { messageId: newMessageId }).catch(() => {});
+            }
+          }
+
+          console.log(JSON.stringify({
+            event: 'regen_rss_success',
+            source: 'senal',
+            guid: entry.guid,
+            timestamp: new Date().toISOString(),
+          }));
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: 'regen_rss_error',
+          source,
+          guid: entry.guid,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }));
+        if (chatId && messageId) {
+          try {
+            await ctx.api.editMessageText(chatId, messageId, '\u{274C} No se pudo regenerar.');
+          } catch {}
+        }
+      }
+      return;
+    }
+
     // Selección de artículo en página de El Mercurio
     if (data.startsWith('empage:')) {
       const index = parseInt(data.slice(7), 10);
@@ -1346,6 +1513,7 @@ export function createBot(token: string): Bot {
     const arg = ctx.match?.trim().toLowerCase() || '';
     const wantSenal = !arg || arg === 'senal' || arg === 'señal';
     const wantPauta = !arg || arg === 'pauta';
+    const wantFotoportadas = !arg || arg === 'fotoportadas' || arg === 'portadas';
 
     try {
       const threadId = ctx.message?.message_thread_id;
@@ -1355,6 +1523,9 @@ export function createBot(token: string): Bot {
       }
       if (wantPauta) {
         sent = await fetchLatestPauta(ctx.api, ctx.chat.id, threadId) || sent;
+      }
+      if (wantFotoportadas) {
+        sent = await fetchLatestFotoportadas(ctx.api, ctx.chat.id, threadId) || sent;
       }
       if (!sent) {
         await ctx.reply('No encontré publicaciones recientes.');
@@ -1374,6 +1545,8 @@ export function createBot(token: string): Bot {
     console.error(JSON.stringify({ event: 'rss_poller_fatal', error: err?.message || String(err), timestamp: new Date().toISOString() })));
   startAdprensaPoller(bot.api).catch(err =>
     console.error(JSON.stringify({ event: 'adprensa_poller_fatal', error: err?.message || String(err), timestamp: new Date().toISOString() })));
+  startFotoportadasPoller(bot.api).catch(err =>
+    console.error(JSON.stringify({ event: 'fotoportadas_poller_fatal', error: err?.message || String(err), timestamp: new Date().toISOString() })));
 
   return bot;
 }

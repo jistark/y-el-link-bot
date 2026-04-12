@@ -190,6 +190,27 @@ export async function findByGuid(guid: string): Promise<RegistryEntry | undefine
   }
 }
 
+export async function findByGuidPrefix(prefix: string): Promise<RegistryEntry | undefined> {
+  const entries = await loadEntries();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i].guid?.startsWith(prefix)) return entries[i];
+  }
+}
+
+export async function updateRegistryEntry(
+  guid: string,
+  updates: Partial<Pick<RegistryEntry, 'messageId' | 'telegraphPath'>>,
+): Promise<void> {
+  const entries = await loadEntries();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i].guid === guid) {
+      Object.assign(entries[i], updates);
+      scheduleSave();
+      return;
+    }
+  }
+}
+
 export async function findByMessageId(chatId: number, messageId: number): Promise<RegistryEntry | undefined> {
   const entries = await loadEntries();
   for (let i = entries.length - 1; i >= 0; i--) {
