@@ -12,10 +12,11 @@ const VENV_PYTHON = resolve(PROJECT_ROOT, '.venv/bin/python3');
 const PYTHON_CMD = process.env.PYTHON_CMD || (existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python3');
 const TIMEOUT_MS = 25_000;
 
-export async function fetchBypass(url: string, referer?: string): Promise<string> {
+export type FetchMode = 'chrome' | 'googlebot' | 'inspectiontool';
+
+export async function fetchBypass(url: string, referer?: string, mode: FetchMode = 'chrome'): Promise<string> {
   return new Promise((resolve, reject) => {
-    const args = [SCRIPT_PATH, url];
-    if (referer) args.push(referer);
+    const args = [SCRIPT_PATH, url, referer || '', mode];
 
     const proc = spawn(PYTHON_CMD, args, {
       timeout: TIMEOUT_MS,

@@ -139,7 +139,11 @@ function parseContentElements(elements: ContentElement[]): string {
 
 export async function extract(url: string): Promise<Article> {
   const response = await fetch(url, {
-    headers: { 'User-Agent': GOOGLEBOT_UA },
+    headers: {
+      'User-Agent': GOOGLEBOT_UA,
+      'X-Forwarded-For': '66.249.66.1',
+      'Referer': 'https://www.google.com/',
+    },
     signal: AbortSignal.timeout(15000),
   });
 

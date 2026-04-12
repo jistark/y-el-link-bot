@@ -37,7 +37,9 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const html = await fetchBypass(url, 'https://www.google.com/');
+  // Google-InspectionTool UA gets full article from NYT
+  // (per bypass-paywalls-chrome-clean: NYT blocks regular Googlebot for /live/ pages)
+  const html = await fetchBypass(url, 'https://www.google.com/', 'inspectiontool');
 
   // Extract JSON-LD for metadata
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;

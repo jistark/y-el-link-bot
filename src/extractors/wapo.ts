@@ -96,7 +96,9 @@ function extractWaPo(html: string): Article | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const html = await fetchBypass(url, 'https://www.google.com/');
+  // Googlebot UA + X-Forwarded-For bypasses WaPo's Arc XP server-side paywall
+  // (per bypass-paywalls-chrome-clean: WaPo validates IP via X-Forwarded-For)
+  const html = await fetchBypass(url, 'https://www.google.com/', 'googlebot');
   const article = extractWaPo(html);
 
   if (!article) {
