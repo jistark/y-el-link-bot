@@ -14,6 +14,9 @@ const SKIP_DOMAINS = new Set([
   'wikipedia.org', 'wikimedia.org',
   't.me', 'telegram.org', 'wa.me', 'whatsapp.com',
   'wetransfer.com', 'we.tl', 'mega.nz', 'dropbox.com',
+  // Link expander bots (fxtwitter, fixupx, vxtwitter, etc.)
+  'fxtwitter.com', 'fixupx.com', 'vxtwitter.com', 'fixvx.com',
+  'ddinstagram.com', 'rxddit.com', 'vxreddit.com',
 ]);
 
 function isExtractableUrl(url: string): boolean {
@@ -881,6 +884,9 @@ export function createBot(token: string): Bot {
 
   // Handler para mensajes con URLs
   bot.on('message:text', async (ctx) => {
+    // Ignorar mensajes de otros bots (linkexpander, etc.)
+    if (ctx.message.from?.is_bot) return;
+
     const rawUrls = extractUrls(ctx.message.text);
 
     for (const rawUrl of rawUrls) {
@@ -1619,15 +1625,18 @@ async function processAndReply(
       try { await ctx.api.deleteMessage(req.chatId, req.botMessageId); } catch { /* ok */ }
       try { await ctx.api.deleteMessage(req.chatId, req.originalMessageId); } catch { /* ok */ }
 
-      // Guard sameId: si reply target === topic header, omitir message_thread_id
+      // sameId: reply target es el header del topic (mensaje directo, no respuesta a otro usuario)
+      // → siempre incluir message_thread_id para que Telegram ubique el topic correcto
+      // → solo incluir reply_to_message_id cuando es una respuesta real (no al header)
       const sameId = req.replyToMessageId === req.threadId;
-      const threadOpts = sameId ? {} : (req.threadId ? { message_thread_id: req.threadId } : {});
+      const threadOpts = req.threadId ? { message_thread_id: req.threadId } : {};
+      const replyOpts = sameId ? {} : { reply_to_message_id: req.replyToMessageId };
 
       await safeSendMessage(ctx.api, req.chatId, messageText, {
         ...threadOpts,
+        ...replyOpts,
         parse_mode: 'HTML',
         reply_markup: keyboard,
-        reply_to_message_id: req.replyToMessageId,
       });
     } else {
       // Mensaje directo con link — borrar original, editar "⏳ Procesando" con resultado
@@ -1664,15 +1673,17 @@ async function processAndReply(
 
       try { await ctx.api.deleteMessage(chatId, ctx.msg!.message_id); } catch { /* ok */ }
 
-      // Guard sameId: if reply target IS the topic header, omit message_thread_id
+      // sameId: reply target es el header del topic (mensaje directo, no respuesta real)
+      // → siempre incluir message_thread_id, solo incluir reply_to cuando es respuesta real
       const sameId = replyToId === threadId;
-      const threadOpts = sameId ? {} : (threadId ? { message_thread_id: threadId } : {});
+      const threadOpts = threadId ? { message_thread_id: threadId } : {};
+      const replyOpts = sameId ? {} : { reply_to_message_id: replyToId };
 
       await safeSendMessage(ctx.api, chatId, messageText, {
         ...threadOpts,
+        ...replyOpts,
         parse_mode: 'HTML',
         reply_markup: keyboard,
-        reply_to_message_id: replyToId,
       });
     } else {
       // Direct message (not a reply) — middleware handles thread injection via ctx.reply()
