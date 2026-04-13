@@ -154,11 +154,11 @@ export function createPoller<T extends BaseRssItem>(config: PollerConfig<T>): Po
   // --- Startup ---
 
   async function start(api: Api): Promise<void> {
-    const chatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
+    const chatId = parseInt(process.env.POLLER_CHAT_ID || '', 10);
     if (!chatId || isNaN(chatId)) {
       console.log(JSON.stringify({
         event: `${name}_poller_disabled`,
-        reason: 'BANCOMEDIA_CHAT_ID not set',
+        reason: 'POLLER_CHAT_ID not set',
         timestamp: new Date().toISOString(),
       }));
       return;

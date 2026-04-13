@@ -1571,11 +1571,11 @@ export function createBot(token: string): Bot {
     await ctx.answerCallbackQuery();
   });
 
-  // /ultimo — fetch latest Señal or Pauta post (Bancomedia channel only)
-  const bancomediaChatId = parseInt(process.env.BANCOMEDIA_CHAT_ID || '', 10);
+  // /ultimo — fetch latest Señal or Pauta post (poller channel only)
+  const pollerChatId = parseInt(process.env.POLLER_CHAT_ID || '', 10);
 
   bot.command(['ultimo', 'last'], async (ctx) => {
-    if (!bancomediaChatId || ctx.chat.id !== bancomediaChatId) return;
+    if (!pollerChatId || ctx.chat.id !== pollerChatId) return;
 
     const arg = ctx.match?.trim().toLowerCase() || '';
     const wantSenal = !arg || arg === 'senal' || arg === 'señal';
@@ -1607,7 +1607,7 @@ export function createBot(token: string): Bot {
     }
   });
 
-  // RSS pollers for Bancomedia channel
+  // RSS pollers for private channel
   startRssPoller(bot.api).catch(err =>
     console.error(JSON.stringify({ event: 'rss_poller_fatal', error: err?.message || String(err), timestamp: new Date().toISOString() })));
   startAdprensaPoller(bot.api).catch(err =>
