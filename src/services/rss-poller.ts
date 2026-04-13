@@ -132,16 +132,41 @@ export function extractMediaLinks(html: string): MediaLinks {
   };
 }
 
-// Vimeo thumbnail via direct CDN URL pattern — works for domain-restricted
-// videos where oEmbed returns no thumbnail (domain_status_code 403).
+// Vimeo thumbnail from player config — fetches the player page with Referer
+// to get the real thumbnail_url (domain-restricted videos return a generic
+// placeholder via the CDN pattern).
 async function getVimeoThumbnail(vimeoId: string): Promise<string | null> {
-  const url = `https://i.vimeocdn.com/video/${vimeoId}_1280x720.jpg`;
   try {
-    const res = await fetch(url, {
-      method: 'HEAD',
+    const res = await fetch(`https://player.vimeo.com/video/${vimeoId}`, {
+      headers: {
+        'Referer': 'https://senal.mediabanco.com/',
+        'Origin': 'https://senal.mediabanco.com',
+        'User-Agent': randomUA(),
+      },
       signal: AbortSignal.timeout(10_000),
     });
-    return res.ok ? url : null;
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // Extract config JSON that starts with {"cdn_url"
+    const start = html.indexOf('{"cdn_url"');
+    if (start === -1) return null;
+
+    // Find matching closing brace
+    let depth = 0;
+    let end = start;
+    for (let i = start; i < html.length; i++) {
+      if (html[i] === '{') depth++;
+      else if (html[i] === '}') depth--;
+      if (depth === 0) { end = i + 1; break; }
+    }
+
+    const config = JSON.parse(html.slice(start, end));
+    const thumbUrl = config?.video?.thumbnail_url;
+    if (!thumbUrl) return null;
+
+    // Append size params for 720p quality
+    return `${thumbUrl}?mw=1280&mh=720&q=70`;
   } catch {
     return null;
   }
