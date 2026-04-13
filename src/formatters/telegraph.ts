@@ -55,6 +55,7 @@ const SOURCE_CODES: Record<Article['source'], string> = {
   ojoalatele: 'ojt',
   adprensa: 'adp',
   lahora: 'lhr',
+  generic: 'gen',
 };
 
 function generateSlug(source: Article['source']): string {
@@ -460,6 +461,7 @@ function getSourceName(source: Article['source']): string {
     ojoalatele: 'Ojo a la Tele',
     adprensa: 'AdPrensa',
     lahora: 'La Hora',
+    generic: 'Artículo',
   };
   return names[source];
 }

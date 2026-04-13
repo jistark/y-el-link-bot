@@ -28,6 +28,7 @@ import * as theverge from './theverge.js';
 import * as tvn from './tvn.js';
 import * as wapo from './wapo.js';
 import * as wired from './wired.js';
+import * as generic from './generic.js';
 
 const URL_PATTERNS = {
   elmercurio: /(?:beta|digital|www)?\.?elmercurio\.com/,
@@ -164,6 +165,6 @@ export async function extractArticle(url: string): Promise<Article> {
       return lahora.extract(url);
 
     default:
-      throw new Error('URL no corresponde a un diario soportado');
+      return generic.extract(url);
   }
 }

@@ -1,0 +1,2777 @@
+{
+  "_meta": {
+    "compiled": "2026-04-13T00:35:34.807Z",
+    "count": 933,
+    "source": "bypass-paywalls-chrome-clean sites.js"
+  },
+  "60millions-mag.com": {
+    "allow_cookies": true
+  },
+  "aachener-zeitung.de": {
+    "allow_cookies": true
+  },
+  "abcmais.com": {
+    "allow_cookies": true
+  },
+  "actu.fr": {
+    "allow_cookies": true
+  },
+  "al.com": {
+    "allow_cookies": true
+  },
+  "cleveland.com": {
+    "allow_cookies": true
+  },
+  "lehighvalleylive.com": {
+    "allow_cookies": true
+  },
+  "masslive.com": {
+    "allow_cookies": true
+  },
+  "mlive.com": {
+    "allow_cookies": true
+  },
+  "nj.com": {
+    "allow_cookies": true
+  },
+  "oregonlive.com": {
+    "allow_cookies": true
+  },
+  "pennlive.com": {
+    "allow_cookies": true
+  },
+  "silive.com": {
+    "allow_cookies": true
+  },
+  "syracuse.com": {
+    "allow_cookies": true
+  },
+  "adweek.com": {},
+  "aftenposten.no": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "al-monitor.com": {
+    "allow_cookies": true
+  },
+  "abqjournal.com": {
+    "allow_cookies": true
+  },
+  "ad.nl": {
+    "allow_cookies": true
+  },
+  "bd.nl": {
+    "allow_cookies": true
+  },
+  "bndestem.nl": {
+    "allow_cookies": true
+  },
+  "destentor.nl": {
+    "allow_cookies": true
+  },
+  "ed.nl": {
+    "allow_cookies": true
+  },
+  "gelderlander.nl": {
+    "allow_cookies": true
+  },
+  "pzc.nl": {
+    "allow_cookies": true
+  },
+  "tubantia.nl": {
+    "allow_cookies": true
+  },
+  "alternatives-economiques.fr": {},
+  "ambito.com": {},
+  "americastestkitchen.com": {
+    "allow_cookies": true
+  },
+  "americanaffairsjournal.org": {
+    "allow_cookies": true
+  },
+  "americanbanker.com": {
+    "allow_cookies": true
+  },
+  "americanpurpose.com": {
+    "allow_cookies": true
+  },
+  "aoc.media": {
+    "allow_cookies": true
+  },
+  "ara.cat": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "arabalears.cat": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "businessday.co.za": {
+    "allow_cookies": true
+  },
+  "timeslive.co.za": {
+    "allow_cookies": true
+  },
+  "artforum.com": {},
+  "artnet.com": {
+    "allow_cookies": true
+  },
+  "aerztezeitung.de": {
+    "allow_cookies": true
+  },
+  "atavist.com": {},
+  "atlantico.fr": {
+    "allow_cookies": true
+  },
+  "adelaidenow.com.au": {
+    "allow_cookies": true
+  },
+  "cairnspost.com.au": {
+    "allow_cookies": true
+  },
+  "codesports.com.au": {
+    "allow_cookies": true
+  },
+  "couriermail.com.au": {
+    "allow_cookies": true
+  },
+  "dailytelegraph.com.au": {
+    "allow_cookies": true
+  },
+  "geelongadvertiser.com.au": {
+    "allow_cookies": true
+  },
+  "goldcoastbulletin.com.au": {
+    "allow_cookies": true
+  },
+  "heraldsun.com.au": {
+    "allow_cookies": true
+  },
+  "ntnews.com.au": {
+    "allow_cookies": true
+  },
+  "theaustralian.com.au": {
+    "allow_cookies": true
+  },
+  "thechronicle.com.au": {
+    "allow_cookies": true
+  },
+  "themercury.com.au": {
+    "allow_cookies": true
+  },
+  "townsvillebulletin.com.au": {
+    "allow_cookies": true
+  },
+  "weeklytimesnow.com.au": {
+    "allow_cookies": true
+  },
+  "bendigoadvertiser.com.au": {
+    "allow_cookies": true
+  },
+  "bordermail.com.au": {
+    "allow_cookies": true
+  },
+  "canberratimes.com.au": {
+    "allow_cookies": true
+  },
+  "centralwesterndaily.com.au": {
+    "allow_cookies": true
+  },
+  "dailyadvertiser.com.au": {
+    "allow_cookies": true
+  },
+  "dailyliberal.com.au": {
+    "allow_cookies": true
+  },
+  "examiner.com.au": {
+    "allow_cookies": true
+  },
+  "illawarramercury.com.au": {
+    "allow_cookies": true
+  },
+  "newcastleherald.com.au": {
+    "allow_cookies": true
+  },
+  "northerndailyleader.com.au": {
+    "allow_cookies": true
+  },
+  "standard.net.au": {
+    "allow_cookies": true
+  },
+  "theadvocate.com.au": {
+    "allow_cookies": true
+  },
+  "thecourier.com.au": {
+    "allow_cookies": true
+  },
+  "westernadvocate.com.au": {
+    "allow_cookies": true
+  },
+  "afr.com": {
+    "allow_cookies": true
+  },
+  "brisbanetimes.com.au": {
+    "allow_cookies": true
+  },
+  "smh.com.au": {
+    "allow_cookies": true
+  },
+  "theage.com.au": {
+    "allow_cookies": true
+  },
+  "watoday.com.au": {
+    "allow_cookies": true
+  },
+  "autocar.co.uk": {
+    "allow_cookies": true
+  },
+  "autohebdo.fr": {
+    "allow_cookies": true
+  },
+  "automobilwoche.de": {
+    "allow_cookies": true
+  },
+  "autoplus.fr": {
+    "allow_cookies": true
+  },
+  "autosport.com": {
+    "allow_cookies": true
+  },
+  "axios.com": {
+    "allow_cookies": true
+  },
+  "bnn.de": {
+    "allow_cookies": true
+  },
+  "balkaninsight.com": {
+    "allow_cookies": true
+  },
+  "barandbench.com": {
+    "allow_cookies": true
+  },
+  "barrons.com": {
+    "allow_cookies": true
+  },
+  "historyextra.com": {
+    "allow_cookies": true
+  },
+  "bbc.com": {
+    "allow_cookies": true
+  },
+  "benzinga.com": {},
+  "bt.no": {
+    "useragent": "facebookbot",
+    "allow_cookies": true
+  },
+  "berliner-zeitung.de": {
+    "allow_cookies": true
+  },
+  "berlingske.dk": {
+    "allow_cookies": true
+  },
+  "weekendavisen.dk": {
+    "allow_cookies": true
+  },
+  "bhaskar.com": {
+    "allow_cookies": true
+  },
+  "bild.de": {
+    "allow_cookies": true
+  },
+  "theblaze.com": {
+    "allow_cookies": true
+  },
+  "bloomberg.com": {
+    "allow_cookies": true
+  },
+  "bloombergadria.com": {
+    "allow_cookies": true
+  },
+  "dagensmedicin.se": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "dn.se": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "hd.se": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "sydsvenskan.se": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "boersen-zeitung.de": {
+    "allow_cookies": true
+  },
+  "brill.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "thebulletin.org": {
+    "allow_cookies": true
+  },
+  "businessam.be": {
+    "allow_cookies": true
+  },
+  "businessdesk.co.nz": {
+    "useragent_custom": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "allow_cookies": true
+  },
+  "businessinsider.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "businessinsider.jp": {
+    "allow_cookies": true
+  },
+  "businessinsider.nl": {
+    "allow_cookies": true
+  },
+  "businesspost.ie": {
+    "allow_cookies": true
+  },
+  "business-standard.com": {},
+  "labusinessjournal.com": {
+    "allow_cookies": true
+  },
+  "ocbj.com": {
+    "allow_cookies": true
+  },
+  "sdbj.com": {
+    "allow_cookies": true
+  },
+  "sfvbj.com": {
+    "allow_cookies": true
+  },
+  "capital.bg": {
+    "allow_cookies": true
+  },
+  "capital.fr": {
+    "allow_cookies": true
+  },
+  "caravanmagazine.in": {
+    "allow_cookies": true
+  },
+  "cartacapital.com.br": {
+    "allow_cookies": true
+  },
+  "causeur.fr": {
+    "allow_cookies": true
+  },
+  "challenges.fr": {
+    "allow_cookies": true
+  },
+  "charliehebdo.fr": {
+    "allow_cookies": true
+  },
+  "cen.acs.org": {},
+  "chicago.suntimes.com": {
+    "allow_cookies": true
+  },
+  "chunichi.co.jp": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "tokyo-np.co.jp": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "cicero.de": {
+    "allow_cookies": true
+  },
+  "citywire.com": {
+    "useragent": "facebookbot",
+    "allow_cookies": true
+  },
+  "cnbc.com": {
+    "allow_cookies": true
+  },
+  "cnn.com": {
+    "allow_cookies": true
+  },
+  "commentary.org": {},
+  "cw.com.tw": {},
+  "architecturaldigest.com": {
+    "allow_cookies": true
+  },
+  "bonappetit.com": {
+    "allow_cookies": true
+  },
+  "cntraveler.com": {
+    "allow_cookies": true
+  },
+  "epicurious.com": {
+    "allow_cookies": true
+  },
+  "gq.com": {
+    "allow_cookies": true
+  },
+  "newyorker.com": {
+    "allow_cookies": true
+  },
+  "pitchfork.com": {
+    "allow_cookies": true
+  },
+  "vanityfair.com": {
+    "allow_cookies": true
+  },
+  "vogue.co.uk": {
+    "allow_cookies": true
+  },
+  "vogue.com": {
+    "allow_cookies": true
+  },
+  "wired.com": {
+    "allow_cookies": true
+  },
+  "connaissancedesarts.com": {
+    "allow_cookies": true
+  },
+  "correiodopovo.com.br": {
+    "allow_cookies": true
+  },
+  "corriere.it": {
+    "allow_cookies": true
+  },
+  "corrieredellosport.it": {
+    "allow_cookies": true
+  },
+  "cosmopolitan.fr": {
+    "allow_cookies": true
+  },
+  "courrierinternational.com": {
+    "allow_cookies": true
+  },
+  "daytondailynews.com": {
+    "allow_cookies": true
+  },
+  "360dx.com": {
+    "allow_cookies": true
+  },
+  "adage.com": {
+    "allow_cookies": true
+  },
+  "autonews.com": {
+    "allow_cookies": true
+  },
+  "chicagobusiness.com": {
+    "allow_cookies": true
+  },
+  "crainscleveland.com": {
+    "allow_cookies": true
+  },
+  "crainsdetroit.com": {
+    "allow_cookies": true
+  },
+  "crainsgrandrapids.com": {
+    "allow_cookies": true
+  },
+  "crainsnewyork.com": {
+    "allow_cookies": true
+  },
+  "european-rubber-journal.com": {
+    "allow_cookies": true
+  },
+  "genomeweb.com": {
+    "allow_cookies": true
+  },
+  "modernhealthcare.com": {
+    "allow_cookies": true
+  },
+  "pionline.com": {
+    "allow_cookies": true
+  },
+  "plasticsnews.com": {
+    "allow_cookies": true
+  },
+  "precisionmedicineonline.com": {
+    "allow_cookies": true
+  },
+  "rubbernews.com": {
+    "allow_cookies": true
+  },
+  "tirebusiness.com": {
+    "allow_cookies": true
+  },
+  "utech-polyurethane.com": {
+    "allow_cookies": true
+  },
+  "crusoe.com.br": {
+    "allow_cookies": true
+  },
+  "etc.se": {
+    "allow_cookies": true
+  },
+  "cyclingnews.com": {
+    "allow_cookies": true
+  },
+  "dagsavisen.no": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "dailyherald.com": {
+    "allow_cookies": true
+  },
+  "dailymail.co.uk": {
+    "allow_cookies": true
+  },
+  "mailonsunday.co.uk": {
+    "allow_cookies": true
+  },
+  "thisismoney.co.uk": {
+    "allow_cookies": true
+  },
+  "tijd.be": {
+    "allow_cookies": true
+  },
+  "decanter.com": {
+    "allow_cookies": true
+  },
+  "defector.com": {
+    "allow_cookies": true
+  },
+  "denik.cz": {
+    "allow_cookies": true
+  },
+  "freitag.de": {
+    "allow_cookies": true
+  },
+  "spiegel.de": {
+    "allow_cookies": true
+  },
+  "derstandard.at": {
+    "allow_cookies": true
+  },
+  "tagesspiegel.de": {
+    "allow_cookies": true
+  },
+  "diariodenavarra.es": {
+    "allow_cookies": true
+  },
+  "dn.pt": {
+    "allow_cookies": true
+  },
+  "df.cl": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "diepresse.com": {
+    "allow_cookies": true
+  },
+  "rheinpfalz.de": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "welt.de": {
+    "allow_cookies": true
+  },
+  "zeit.de": {
+    "allow_cookies": true
+  },
+  "digiday.com": {
+    "allow_cookies": true
+  },
+  "glossy.co": {
+    "allow_cookies": true
+  },
+  "modernretail.co": {
+    "allow_cookies": true
+  },
+  "digitimes.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "discovermagazine.com": {},
+  "dn.no": {
+    "allow_cookies": true
+  },
+  "europower.no": {
+    "allow_cookies": true
+  },
+  "fiskeribladet.no": {
+    "allow_cookies": true
+  },
+  "hydrogeninsight.com": {
+    "allow_cookies": true
+  },
+  "intrafish.com": {
+    "allow_cookies": true
+  },
+  "intrafish.no": {
+    "allow_cookies": true
+  },
+  "kystens.no": {
+    "allow_cookies": true
+  },
+  "rechargenews.com": {
+    "allow_cookies": true
+  },
+  "tradewindsnews.com": {
+    "allow_cookies": true
+  },
+  "upstreamonline.com": {
+    "allow_cookies": true
+  },
+  "dnevnik.bg": {
+    "useragent_custom": "Mozilla/5.0 (Java) outbrain",
+    "allow_cookies": true
+  },
+  "editorialedomani.it": {
+    "allow_cookies": true
+  },
+  "doorbraak.be": {
+    "allow_cookies": true
+  },
+  "demorgen.be": {},
+  "flair.nl": {},
+  "humo.be": {},
+  "libelle.nl": {},
+  "margriet.nl": {},
+  "parool.nl": {},
+  "trouw.nl": {},
+  "volkskrant.nl": {},
+  "dwell.com": {
+    "allow_cookies": true
+  },
+  "eastwest.eu": {
+    "allow_cookies": true
+  },
+  "elconfidencial.com": {
+    "allow_cookies": true
+  },
+  "cronista.com": {
+    "allow_cookies": true
+  },
+  "eldeber.com.bo": {
+    "allow_cookies": true
+  },
+  "eldiario.es": {
+    "allow_cookies": true
+  },
+  "elespanol.com": {
+    "allow_cookies": true
+  },
+  "elespectador.com": {
+    "allow_cookies": true
+  },
+  "elmercurio.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "elobservador.com.uy": {
+    "allow_cookies": true
+  },
+  "elpais.com": {
+    "allow_cookies": true
+  },
+  "elpais.com.uy": {
+    "allow_cookies": true
+  },
+  "eltiempo.com": {
+    "allow_cookies": true
+  },
+  "eltribuno.com": {
+    "allow_cookies": true
+  },
+  "eluniversal.com.mx": {
+    "allow_cookies": true
+  },
+  "eluniverso.com": {
+    "allow_cookies": true
+  },
+  "elle.fr": {
+    "allow_cookies": true
+  },
+  "britannica.com": {},
+  "enotes.com": {},
+  "entrepreneur.com": {
+    "allow_cookies": true
+  },
+  "espn.com": {
+    "allow_cookies": true
+  },
+  "esprit.presse.fr": {
+    "allow_cookies": true
+  },
+  "em.com.br": {
+    "allow_cookies": true
+  },
+  "euobserver.com": {
+    "allow_cookies": true
+  },
+  "standard.co.uk": {
+    "allow_cookies": true
+  },
+  "exame.com": {
+    "allow_cookies": true
+  },
+  "expresso.pt": {
+    "allow_cookies": true
+  },
+  "fastcompany.com": {
+    "allow_cookies": true
+  },
+  "fd.nl": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "fieldandstream.com": {
+    "allow_cookies": true
+  },
+  "fnlondon.com": {
+    "allow_cookies": true
+  },
+  "ft.com": {
+    "referer": "google"
+  },
+  "firstthings.com": {
+    "allow_cookies": true
+  },
+  "fmrmagazine.com": {
+    "allow_cookies": true
+  },
+  "focusplus.de": {
+    "allow_cookies": true
+  },
+  "fokus.se": {
+    "allow_cookies": true
+  },
+  "ftm.eu": {
+    "allow_cookies": true
+  },
+  "ftm.nl": {
+    "allow_cookies": true
+  },
+  "forbes.com": {
+    "allow_cookies": true
+  },
+  "forbes.com.au": {},
+  "forbes.ua": {
+    "allow_cookies": true
+  },
+  "foreignaffairs.com": {
+    "allow_cookies": true
+  },
+  "foreignpolicy.com": {
+    "allow_cookies": true
+  },
+  "fortune.com": {
+    "allow_cookies": true
+  },
+  "foxnews.com": {
+    "allow_cookies": true
+  },
+  "faz.net": {
+    "allow_cookies": true
+  },
+  "freiepresse.de": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "abendblatt.de": {
+    "allow_cookies": true
+  },
+  "braunschweiger-zeitung.de": {
+    "allow_cookies": true
+  },
+  "harzkurier.de": {
+    "allow_cookies": true
+  },
+  "ikz-online.de": {
+    "allow_cookies": true
+  },
+  "morgenpost.de": {
+    "allow_cookies": true
+  },
+  "nrz.de": {
+    "allow_cookies": true
+  },
+  "otz.de": {
+    "allow_cookies": true
+  },
+  "thueringer-allgemeine.de": {
+    "allow_cookies": true
+  },
+  "tlz.de": {
+    "allow_cookies": true
+  },
+  "waz.de": {
+    "allow_cookies": true
+  },
+  "wp.de": {
+    "allow_cookies": true
+  },
+  "wr.de": {
+    "allow_cookies": true
+  },
+  "azcentral.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "cincinnati.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "commercialappeal.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "courier-journal.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "democratandchronicle.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "desmoinesregister.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "detroitnews.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "dispatch.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "freep.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "indystar.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "jacksonville.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "jsonline.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "knoxnews.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "news-press.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "northjersey.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "oklahoman.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "palmbeachpost.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "tennessean.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "gauchazh.clicrbs.com.br": {
+    "allow_cookies": true
+  },
+  "gazetadopovo.com.br": {
+    "allow_cookies": true
+  },
+  "gbnews.com": {
+    "allow_cookies": true
+  },
+  "glassdoor.com": {},
+  "globes.co.il": {},
+  "granta.com": {
+    "allow_cookies": true
+  },
+  "parkiet.com": {},
+  "rp.pl": {},
+  "groene.nl": {
+    "useragent": "googlebot"
+  },
+  "lesoleil.com": {
+    "allow_cookies": true
+  },
+  "lamontagne.fr": {
+    "allow_cookies": true
+  },
+  "bienpublic.com": {
+    "allow_cookies": true
+  },
+  "dna.fr": {
+    "allow_cookies": true
+  },
+  "estrepublicain.fr": {
+    "allow_cookies": true
+  },
+  "lalsace.fr": {
+    "allow_cookies": true
+  },
+  "ledauphine.com": {
+    "allow_cookies": true
+  },
+  "lejsl.com": {
+    "allow_cookies": true
+  },
+  "leprogres.fr": {
+    "allow_cookies": true
+  },
+  "republicain-lorrain.fr": {
+    "allow_cookies": true
+  },
+  "vosgesmatin.fr": {
+    "allow_cookies": true
+  },
+  "arcinfo.ch": {
+    "allow_cookies": true
+  },
+  "lacote.ch": {
+    "allow_cookies": true
+  },
+  "lenouvelliste.ch": {
+    "allow_cookies": true
+  },
+  "usinenouvelle.com": {
+    "allow_cookies": true
+  },
+  "dhnet.be": {
+    "allow_cookies": true
+  },
+  "lalibre.be": {
+    "allow_cookies": true
+  },
+  "lavenir.net": {
+    "allow_cookies": true
+  },
+  "moustique.be": {
+    "allow_cookies": true
+  },
+  "centrepresseaveyron.fr": {
+    "allow_cookies": true
+  },
+  "journaldemillau.fr": {
+    "allow_cookies": true
+  },
+  "ladepeche.fr": {
+    "allow_cookies": true
+  },
+  "lindependant.fr": {
+    "allow_cookies": true
+  },
+  "midilibre.fr": {
+    "allow_cookies": true
+  },
+  "nrpyrenees.fr": {
+    "allow_cookies": true
+  },
+  "petitbleu.fr": {
+    "allow_cookies": true
+  },
+  "rugbyrama.fr": {
+    "allow_cookies": true
+  },
+  "lamanchelibre.fr": {
+    "allow_cookies": true
+  },
+  "monacomatin.mc": {
+    "allow_cookies": true
+  },
+  "nicematin.com": {
+    "allow_cookies": true
+  },
+  "varmatin.com": {
+    "allow_cookies": true
+  },
+  "lequotidiendumedecin.fr": {
+    "allow_cookies": true
+  },
+  "lequotidiendupharmacien.fr": {
+    "allow_cookies": true
+  },
+  "journaldemontreal.com": {
+    "allow_cookies": true
+  },
+  "journaldequebec.com": {
+    "allow_cookies": true
+  },
+  "aisnenouvelle.fr": {
+    "allow_cookies": true
+  },
+  "courrier-picard.fr": {
+    "allow_cookies": true
+  },
+  "lardennais.fr": {
+    "allow_cookies": true
+  },
+  "lavoixdunord.fr": {
+    "allow_cookies": true
+  },
+  "lemessager.fr": {
+    "allow_cookies": true
+  },
+  "lesoir.be": {
+    "allow_cookies": true
+  },
+  "lest-eclair.fr": {
+    "allow_cookies": true
+  },
+  "liberation-champagne.fr": {
+    "allow_cookies": true
+  },
+  "lunion.fr": {
+    "allow_cookies": true
+  },
+  "nordlittoral.fr": {
+    "allow_cookies": true
+  },
+  "paris-normandie.fr": {
+    "allow_cookies": true
+  },
+  "sudinfo.be": {
+    "allow_cookies": true
+  },
+  "sudouest.fr": {
+    "allow_cookies": true
+  },
+  "charentelibre.fr": {
+    "allow_cookies": true
+  },
+  "larepubliquedespyrenees.fr": {
+    "allow_cookies": true
+  },
+  "letelegramme.fr": {
+    "allow_cookies": true
+  },
+  "meretmarine.com": {
+    "allow_cookies": true
+  },
+  "abril.com.br": {
+    "allow_cookies": true
+  },
+  "clarin.com": {
+    "allow_cookies": true
+  },
+  "lavoz.com.ar": {
+    "allow_cookies": true
+  },
+  "losandes.com.ar": {
+    "allow_cookies": true
+  },
+  "ole.com.ar": {
+    "allow_cookies": true
+  },
+  "diariocorreo.pe": {
+    "allow_cookies": true
+  },
+  "elcomercio.pe": {
+    "allow_cookies": true
+  },
+  "gestion.pe": {
+    "allow_cookies": true
+  },
+  "diariodemallorca.es": {
+    "allow_cookies": true
+  },
+  "eldia.es": {
+    "allow_cookies": true
+  },
+  "elperiodico.com": {
+    "allow_cookies": true
+  },
+  "epe.es": {
+    "allow_cookies": true
+  },
+  "farodevigo.es": {
+    "allow_cookies": true
+  },
+  "informacion.es": {
+    "allow_cookies": true
+  },
+  "laprovincia.es": {
+    "allow_cookies": true
+  },
+  "levante-emv.com": {
+    "allow_cookies": true
+  },
+  "lne.es": {
+    "allow_cookies": true
+  },
+  "mallorcazeitung.es": {
+    "allow_cookies": true
+  },
+  "superdeporte.es": {
+    "allow_cookies": true
+  },
+  "elmundo.es": {
+    "allow_cookies": true
+  },
+  "expansion.com": {
+    "allow_cookies": true
+  },
+  "marca.com": {
+    "allow_cookies": true
+  },
+  "abc.es": {
+    "allow_cookies": true
+  },
+  "canarias7.es": {
+    "allow_cookies": true
+  },
+  "diariosur.es": {
+    "allow_cookies": true
+  },
+  "diariovasco.com": {
+    "allow_cookies": true
+  },
+  "elcomercio.es": {
+    "allow_cookies": true
+  },
+  "elcorreo.com": {
+    "allow_cookies": true
+  },
+  "eldiariomontanes.es": {
+    "allow_cookies": true
+  },
+  "elnortedecastilla.es": {
+    "allow_cookies": true
+  },
+  "hoy.es": {
+    "allow_cookies": true
+  },
+  "ideal.es": {
+    "allow_cookies": true
+  },
+  "larioja.com": {
+    "allow_cookies": true
+  },
+  "lasprovincias.es": {
+    "allow_cookies": true
+  },
+  "laverdad.es": {
+    "allow_cookies": true
+  },
+  "lavozdigital.es": {
+    "allow_cookies": true
+  },
+  "huffingtonpost.it": {
+    "useragent": "googlebot"
+  },
+  "italian.tech": {
+    "useragent": "googlebot"
+  },
+  "lastampa.it": {
+    "useragent": "googlebot"
+  },
+  "lescienze.it": {
+    "useragent": "googlebot"
+  },
+  "moda.it": {
+    "useragent": "googlebot"
+  },
+  "repubblica.it": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "iltirreno.it": {},
+  "lanuovasardegna.it": {},
+  "haaretz.co.il": {
+    "useragent_custom": "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.6668.70 Safari/537.36 haaretz/5.0.49",
+    "headers_custom": {
+      "ismobileapp": "true",
+      "platform": "app",
+      "renderingkind": "opened"
+    }
+  },
+  "haaretz.com": {
+    "useragent_custom": "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.6668.70 Safari/537.36 haaretz/5.0.49",
+    "headers_custom": {
+      "ismobileapp": "true",
+      "platform": "app",
+      "renderingkind": "opened"
+    }
+  },
+  "themarker.com": {
+    "useragent_custom": "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.6668.70 Safari/537.36 haaretz/5.0.49",
+    "headers_custom": {
+      "ismobileapp": "true",
+      "platform": "app",
+      "renderingkind": "opened"
+    }
+  },
+  "handelsblatt.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "harpers.org": {},
+  "hbr.org": {},
+  "ctinsider.com": {
+    "allow_cookies": true
+  },
+  "ctpost.com": {
+    "allow_cookies": true
+  },
+  "expressnews.com": {
+    "allow_cookies": true
+  },
+  "houstonchronicle.com": {
+    "allow_cookies": true
+  },
+  "nhregister.com": {
+    "allow_cookies": true
+  },
+  "sfchronicle.com": {
+    "allow_cookies": true
+  },
+  "statesman.com": {
+    "allow_cookies": true
+  },
+  "timesunion.com": {
+    "allow_cookies": true
+  },
+  "bicycling.com": {
+    "allow_cookies": true
+  },
+  "cosmopolitan.com": {
+    "allow_cookies": true
+  },
+  "countryliving.com": {
+    "allow_cookies": true
+  },
+  "delish.com": {
+    "allow_cookies": true
+  },
+  "elle.com": {
+    "allow_cookies": true
+  },
+  "elledecor.com": {
+    "allow_cookies": true
+  },
+  "esquire.com": {
+    "allow_cookies": true
+  },
+  "goodhousekeeping.com": {
+    "allow_cookies": true
+  },
+  "harpersbazaar.com": {
+    "allow_cookies": true
+  },
+  "housebeautiful.com": {
+    "allow_cookies": true
+  },
+  "menshealth.com": {
+    "allow_cookies": true
+  },
+  "oprahdaily.com": {
+    "allow_cookies": true
+  },
+  "popularmechanics.com": {
+    "allow_cookies": true
+  },
+  "prevention.com": {
+    "allow_cookies": true
+  },
+  "roadandtrack.com": {
+    "allow_cookies": true
+  },
+  "runnersworld.com": {
+    "allow_cookies": true
+  },
+  "townandcountrymag.com": {
+    "allow_cookies": true
+  },
+  "womenshealthmag.com": {
+    "allow_cookies": true
+  },
+  "heise.de": {
+    "allow_cookies": true
+  },
+  "hln.be": {
+    "allow_cookies": true
+  },
+  "hindustantimes.com": {
+    "allow_cookies": true
+  },
+  "historia.fr": {
+    "allow_cookies": true
+  },
+  "historytoday.com": {
+    "allow_cookies": true
+  },
+  "hola.com": {
+    "allow_cookies": true
+  },
+  "staradvertiser.com": {
+    "allow_cookies": true
+  },
+  "scotsman.com": {
+    "allow_cookies": true
+  },
+  "yorkshirepost.co.uk": {
+    "allow_cookies": true
+  },
+  "ilfattoquotidiano.it": {
+    "allow_cookies": true
+  },
+  "ilfoglio.it": {
+    "allow_cookies": true
+  },
+  "ilmanifesto.it": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "corriereadriatico.it": {
+    "allow_cookies": true
+  },
+  "ilgazzettino.it": {
+    "allow_cookies": true
+  },
+  "ilmattino.it": {
+    "allow_cookies": true
+  },
+  "ilmessaggero.it": {
+    "allow_cookies": true
+  },
+  "quotidianodipuglia.it": {
+    "allow_cookies": true
+  },
+  "ilsole24ore.com": {
+    "allow_cookies": true
+  },
+  "inc.com": {},
+  "inc42.com": {
+    "allow_cookies": true
+  },
+  "indiatoday.in": {
+    "allow_cookies": true
+  },
+  "inews.co.uk": {
+    "allow_cookies": true
+  },
+  "infolibre.es": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "inkl.com": {},
+  "insidehighered.com": {
+    "allow_cookies": true
+  },
+  "iai.tv": {
+    "allow_cookies": true
+  },
+  "interestingengineering.com": {
+    "allow_cookies": true
+  },
+  "internazionale.it": {
+    "allow_cookies": true
+  },
+  "investors.com": {},
+  "investorschronicle.co.uk": {
+    "referer": "google",
+    "allow_cookies": true
+  },
+  "ipolitics.ca": {
+    "allow_cookies": true
+  },
+  "fr.de": {
+    "allow_cookies": true
+  },
+  "merkur.de": {
+    "allow_cookies": true
+  },
+  "ovb-online.de": {
+    "allow_cookies": true
+  },
+  "independent.ie": {
+    "allow_cookies": true
+  },
+  "italiaoggi.it": {
+    "allow_cookies": true
+  },
+  "jacobin.de": {
+    "allow_cookies": true
+  },
+  "jazzwise.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "jeuneafrique.com": {
+    "allow_cookies": true
+  },
+  "kathimerini.gr": {
+    "allow_cookies": true
+  },
+  "ksta.de": {},
+  "rundschau-online.de": {},
+  "kompas.id": {
+    "allow_cookies": true
+  },
+  "krautreporter.de": {
+    "allow_cookies": true
+  },
+  "kurier.at": {
+    "allow_cookies": true
+  },
+  "lecho.be": {
+    "allow_cookies": true
+  },
+  "lequipe.fr": {
+    "allow_cookies": true
+  },
+  "lexpress.fr": {
+    "allow_cookies": true
+  },
+  "humanite.fr": {
+    "allow_cookies": true
+  },
+  "linforme.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "loeildelaphotographie.com": {
+    "allow_cookies": true
+  },
+  "lopinion.fr": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "la-croix.com": {
+    "allow_cookies": true
+  },
+  "ladiaria.com.uy": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "lagaceta.com.ar": {
+    "useragent": "facebookbot",
+    "allow_cookies": true
+  },
+  "gazzetta.it": {
+    "allow_cookies": true
+  },
+  "lanacion.com.ar": {
+    "allow_cookies": true
+  },
+  "lasegunda.com": {
+    "allow_cookies": true
+  },
+  "latercera.com": {
+    "allow_cookies": true
+  },
+  "lavanguardia.com": {
+    "allow_cookies": true
+  },
+  "profi.de": {
+    "allow_cookies": true
+  },
+  "topagrar.com": {
+    "allow_cookies": true
+  },
+  "wochenblatt.com": {
+    "allow_cookies": true
+  },
+  "reviewjournal.com": {
+    "allow_cookies": true
+  },
+  "law.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "lecanardenchaine.fr": {
+    "useragent": "googlebot"
+  },
+  "lecourrierdesstrateges.fr": {
+    "allow_cookies": true
+  },
+  "ledevoir.com": {},
+  "lefigaro.fr": {
+    "allow_cookies": true
+  },
+  "legrandcontinent.eu": {
+    "allow_cookies": true
+  },
+  "lejdd.fr": {
+    "allow_cookies": true
+  },
+  "journaldunet.com": {
+    "allow_cookies": true
+  },
+  "lemonde.fr": {
+    "allow_cookies": true
+  },
+  "diplomatique.org.br": {
+    "allow_cookies": true
+  },
+  "lenouveleconomiste.fr": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "leparisien.fr": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "lepoint.fr": {
+    "allow_cookies": true
+  },
+  "lerevenu.com": {
+    "allow_cookies": true
+  },
+  "letemps.ch": {
+    "allow_cookies": true
+  },
+  "le1hebdo.fr": {
+    "allow_cookies": true
+  },
+  "buffalonews.com": {
+    "allow_cookies": true
+  },
+  "journalnow.com": {
+    "allow_cookies": true
+  },
+  "journalstar.com": {
+    "allow_cookies": true
+  },
+  "madison.com": {
+    "allow_cookies": true
+  },
+  "nwitimes.com": {
+    "allow_cookies": true
+  },
+  "omaha.com": {
+    "allow_cookies": true
+  },
+  "richmond.com": {
+    "allow_cookies": true
+  },
+  "stltoday.com": {
+    "allow_cookies": true
+  },
+  "tucson.com": {
+    "allow_cookies": true
+  },
+  "tulsaworld.com": {
+    "allow_cookies": true
+  },
+  "lesechos.fr": {
+    "allow_cookies": true
+  },
+  "lesinrocks.com": {
+    "allow_cookies": true
+  },
+  "liberation.fr": {
+    "allow_cookies": true
+  },
+  "linda.nl": {
+    "allow_cookies": true
+  },
+  "literaryreview.co.uk": {
+    "allow_cookies": true
+  },
+  "livelaw.in": {
+    "allow_cookies": true
+  },
+  "livemint.com": {
+    "allow_cookies": true
+  },
+  "loebclassics.com": {},
+  "lrb.co.uk": {
+    "allow_cookies": true
+  },
+  "latimes.com": {
+    "allow_cookies": true
+  },
+  "macrobusiness.com.au": {
+    "allow_cookies": true
+  },
+  "haz.de": {
+    "allow_cookies": true
+  },
+  "kn-online.de": {
+    "allow_cookies": true
+  },
+  "ln-online.de": {
+    "allow_cookies": true
+  },
+  "lvz.de": {
+    "allow_cookies": true
+  },
+  "maz-online.de": {
+    "allow_cookies": true
+  },
+  "neuepresse.de": {
+    "allow_cookies": true
+  },
+  "ostsee-zeitung.de": {
+    "allow_cookies": true
+  },
+  "rnd.de": {
+    "allow_cookies": true
+  },
+  "saechsische.de": {
+    "allow_cookies": true
+  },
+  "mainichi.jp": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "manoramaonline.com": {
+    "allow_cookies": true
+  },
+  "marianne.net": {
+    "allow_cookies": true
+  },
+  "marketwatch.com": {
+    "referer_custom": "https: nullwww.drudgereport.com/",
+    "allow_cookies": true
+  },
+  "bnd.com": {
+    "allow_cookies": true
+  },
+  "charlotteobserver.com": {
+    "allow_cookies": true
+  },
+  "elnuevoherald.com": {
+    "allow_cookies": true
+  },
+  "fresnobee.com": {
+    "allow_cookies": true
+  },
+  "kansas.com": {
+    "allow_cookies": true
+  },
+  "kansascity.com": {
+    "allow_cookies": true
+  },
+  "kentucky.com": {
+    "allow_cookies": true
+  },
+  "mcclatchydc.com": {
+    "allow_cookies": true
+  },
+  "miamiherald.com": {
+    "allow_cookies": true
+  },
+  "newsobserver.com": {
+    "allow_cookies": true
+  },
+  "sacbee.com": {
+    "allow_cookies": true
+  },
+  "star-telegram.com": {
+    "allow_cookies": true
+  },
+  "thestate.com": {
+    "allow_cookies": true
+  },
+  "tri-cityherald.com": {
+    "allow_cookies": true
+  },
+  "gva.be": {
+    "allow_cookies": true
+  },
+  "hbvl.be": {
+    "allow_cookies": true
+  },
+  "nieuwsblad.be": {
+    "allow_cookies": true
+  },
+  "standaard.be": {
+    "allow_cookies": true
+  },
+  "haarlemsdagblad.nl": {
+    "allow_cookies": true
+  },
+  "leidschdagblad.nl": {
+    "allow_cookies": true
+  },
+  "limburger.nl": {
+    "allow_cookies": true
+  },
+  "noordhollandsdagblad.nl": {
+    "allow_cookies": true
+  },
+  "dvhn.nl": {
+    "allow_cookies": true
+  },
+  "lc.nl": {
+    "allow_cookies": true
+  },
+  "bostonherald.com": {
+    "allow_cookies": true
+  },
+  "denverpost.com": {
+    "allow_cookies": true
+  },
+  "eastbaytimes.com": {
+    "allow_cookies": true
+  },
+  "mercurynews.com": {
+    "allow_cookies": true
+  },
+  "ocregister.com": {
+    "allow_cookies": true
+  },
+  "pressenterprise.com": {
+    "allow_cookies": true
+  },
+  "sandiegouniontribune.com": {
+    "allow_cookies": true
+  },
+  "twincities.com": {
+    "allow_cookies": true
+  },
+  "medium.com": {
+    "allow_cookies": true
+  },
+  "betterprogramming.pub": {
+    "allow_cookies": true
+  },
+  "towardsdatascience.com": {
+    "allow_cookies": true
+  },
+  "medscape.com": {
+    "allow_cookies": true
+  },
+  "mexiconewsdaily.com": {
+    "allow_cookies": true
+  },
+  "mid-day.com": {
+    "allow_cookies": true
+  },
+  "milanofinanza.it": {
+    "allow_cookies": true
+  },
+  "milenio.com": {
+    "allow_cookies": true
+  },
+  "sloanreview.mit.edu": {
+    "allow_cookies": true
+  },
+  "technologyreview.com": {
+    "allow_cookies": true
+  },
+  "mittelbayerische.de": {
+    "allow_cookies": true
+  },
+  "mnimarkets.com": {
+    "allow_cookies": true
+  },
+  "monocle.com": {
+    "useragent": "googlebot"
+  },
+  "aerokurier.de": {
+    "allow_cookies": true
+  },
+  "auto-motor-und-sport.de": {
+    "allow_cookies": true
+  },
+  "flugrevue.de": {
+    "allow_cookies": true
+  },
+  "motorradonline.de": {
+    "allow_cookies": true
+  },
+  "womenshealth.de": {
+    "allow_cookies": true
+  },
+  "motorsportmagazine.com": {
+    "allow_cookies": true
+  },
+  "mv-voice.com": {},
+  "mundodeportivo.com": {
+    "allow_cookies": true
+  },
+  "musicomh.com": {
+    "allow_cookies": true
+  },
+  "businessdailyafrica.com": {
+    "allow_cookies": true
+  },
+  "nation.africa": {
+    "allow_cookies": true
+  },
+  "nationalgeographic.com": {
+    "allow_cookies": true,
+    "random_ip": "eu"
+  },
+  "nationalreview.com": {
+    "allow_cookies": true
+  },
+  "nautil.us": {
+    "allow_cookies": true
+  },
+  "nature.com": {
+    "allow_cookies": true
+  },
+  "ndtvprofit.com": {
+    "allow_cookies": true
+  },
+  "nw.de": {
+    "allow_cookies": true
+  },
+  "nzz.ch": {
+    "allow_cookies": true
+  },
+  "newscientist.com": {
+    "allow_cookies": true
+  },
+  "nv.ua": {
+    "allow_cookies": true
+  },
+  "nypost.com": {
+    "allow_cookies": true
+  },
+  "nzherald.co.nz": {
+    "allow_cookies": true
+  },
+  "newsday.com": {
+    "allow_cookies": true
+  },
+  "newslaundry.com": {
+    "allow_cookies": true
+  },
+  "newsweek.com": {},
+  "asia.nikkei.com": {
+    "allow_cookies": true
+  },
+  "nwzonline.de": {
+    "allow_cookies": true
+  },
+  "noz.de": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "shz.de": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "nrc.nl": {},
+  "nsctotal.com.br": {
+    "allow_cookies": true
+  },
+  "nyteknik.se": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "estadao.com.br": {
+    "allow_cookies": true
+  },
+  "globo.com": {
+    "allow_cookies": true
+  },
+  "observador.pt": {
+    "allow_cookies": true
+  },
+  "on3.com": {
+    "allow_cookies": true
+  },
+  "ouest-france.fr": {
+    "allow_cookies": true
+  },
+  "outdoorlife.com": {
+    "allow_cookies": true
+  },
+  "outlookbusiness.com": {
+    "allow_cookies": true
+  },
+  "outlookindia.com": {
+    "allow_cookies": true
+  },
+  "backpacker.com": {
+    "allow_cookies": true
+  },
+  "betamtb.com": {
+    "allow_cookies": true
+  },
+  "betternutrition.com": {
+    "allow_cookies": true
+  },
+  "cleaneatingmag.com": {
+    "allow_cookies": true
+  },
+  "climbing.com": {
+    "allow_cookies": true
+  },
+  "outsideonline.com": {
+    "allow_cookies": true
+  },
+  "oxygenmag.com": {
+    "allow_cookies": true
+  },
+  "skimag.com": {
+    "allow_cookies": true
+  },
+  "trailrunnermag.com": {
+    "allow_cookies": true
+  },
+  "triathlete.com": {
+    "allow_cookies": true
+  },
+  "vegetariantimes.com": {
+    "allow_cookies": true
+  },
+  "womensrunning.com": {
+    "allow_cookies": true
+  },
+  "yogajournal.com": {
+    "allow_cookies": true
+  },
+  "paloaltoonline.com": {},
+  "parismatch.com": {
+    "allow_cookies": true
+  },
+  "pnp.de": {
+    "allow_cookies": true
+  },
+  "pastemagazine.com": {
+    "allow_cookies": true
+  },
+  "billboard.com": {
+    "allow_cookies": true
+  },
+  "rollingstone.com": {
+    "allow_cookies": true
+  },
+  "sourcingjournal.com": {
+    "allow_cookies": true
+  },
+  "sportico.com": {
+    "allow_cookies": true
+  },
+  "variety.com": {
+    "allow_cookies": true
+  },
+  "wwd.com": {
+    "allow_cookies": true
+  },
+  "philomag.com": {
+    "allow_cookies": true
+  },
+  "philomag.de": {
+    "allow_cookies": true
+  },
+  "philonomist.com": {
+    "allow_cookies": true
+  },
+  "philosophynow.org": {},
+  "piratewires.com": {
+    "useragent_custom": "Mozilla/5.0 (compatible; Twitterbot/1.0)",
+    "allow_cookies": true
+  },
+  "post-gazette.com": {},
+  "politicaexterior.com": {
+    "allow_cookies": true
+  },
+  "politico.com": {
+    "allow_cookies": true
+  },
+  "politis.fr": {
+    "allow_cookies": true
+  },
+  "polityka.pl": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "popsci.com": {
+    "allow_cookies": true
+  },
+  "calgaryherald.com": {
+    "allow_cookies": true
+  },
+  "financialpost.com": {
+    "allow_cookies": true
+  },
+  "nationalpost.com": {
+    "allow_cookies": true
+  },
+  "theprovince.com": {
+    "allow_cookies": true
+  },
+  "torontosun.com": {
+    "allow_cookies": true
+  },
+  "vancouversun.com": {
+    "allow_cookies": true
+  },
+  "pourleco.com": {
+    "allow_cookies": true
+  },
+  "pourlascience.fr": {
+    "allow_cookies": true
+  },
+  "crikey.com.au": {},
+  "smartcompany.com.au": {},
+  "themandarin.com.au": {},
+  "profil.at": {
+    "allow_cookies": true
+  },
+  "project-syndicate.org": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "prospectmagazine.co.uk": {
+    "allow_cookies": true
+  },
+  "public.fr": {
+    "allow_cookies": true
+  },
+  "publico.es": {
+    "allow_cookies": true
+  },
+  "puck.news": {
+    "allow_cookies": true
+  },
+  "pb.pl": {
+    "allow_cookies": true
+  },
+  "qz.com": {
+    "allow_cookies": true
+  },
+  "quora.com": {
+    "allow_cookies": true
+  },
+  "ilgiorno.it": {
+    "allow_cookies": true
+  },
+  "ilrestodelcarlino.it": {
+    "allow_cookies": true
+  },
+  "iltelegrafolivorno.it": {
+    "allow_cookies": true
+  },
+  "lanazione.it": {
+    "allow_cookies": true
+  },
+  "quotidiano.net": {
+    "allow_cookies": true
+  },
+  "dailyrecord.co.uk": {
+    "allow_cookies": true
+  },
+  "express.co.uk": {
+    "allow_cookies": true
+  },
+  "reforme.net": {
+    "allow_cookies": true
+  },
+  "reuters.com": {
+    "allow_cookies": true
+  },
+  "revistaoeste.com": {
+    "allow_cookies": true
+  },
+  "revueconflits.com": {
+    "allow_cookies": true
+  },
+  "revue21.fr": {
+    "allow_cookies": true
+  },
+  "ga.de": {
+    "allow_cookies": true
+  },
+  "rp-online.de": {
+    "allow_cookies": true
+  },
+  "saarbruecker-zeitung.de": {
+    "allow_cookies": true
+  },
+  "volksfreund.de": {
+    "allow_cookies": true
+  },
+  "beobachter.ch": {
+    "allow_cookies": true,
+    "useragent": "googlebot"
+  },
+  "blick.ch": {
+    "allow_cookies": true
+  },
+  "handelszeitung.ch": {
+    "allow_cookies": true
+  },
+  "auto-swiat.pl": {
+    "allow_cookies": true
+  },
+  "businessinsider.com.pl": {
+    "allow_cookies": true
+  },
+  "forbes.pl": {
+    "allow_cookies": true
+  },
+  "komputerswiat.pl": {
+    "allow_cookies": true
+  },
+  "newsweek.pl": {
+    "allow_cookies": true
+  },
+  "onet.pl": {
+    "allow_cookies": true
+  },
+  "rotowire.com": {
+    "allow_cookies": true
+  },
+  "beleggersbelangen.nl": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "femmesdaujourdhui.be": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "flair.be": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "knack.be": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "kw.be": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "levif.be": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "libelle.be": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "rugbypass.com": {
+    "allow_cookies": true
+  },
+  "spglobal.com": {},
+  "sabado.pt": {
+    "allow_cookies": true
+  },
+  "scholastic.com": {
+    "allow_cookies": true
+  },
+  "schweizermonat.ch": {
+    "allow_cookies": true
+  },
+  "science.org": {
+    "allow_cookies": true
+  },
+  "science-et-vie.com": {},
+  "sciencenews.org": {},
+  "sciencesetavenir.fr": {
+    "allow_cookies": true
+  },
+  "scientificamerican.com": {},
+  "semana.com": {
+    "allow_cookies": true
+  },
+  "sky.it": {
+    "allow_cookies": true
+  },
+  "slate.com": {
+    "allow_cookies": true
+  },
+  "slideshare.net": {
+    "allow_cookies": true
+  },
+  "sofrep.com": {},
+  "scmp.com": {
+    "allow_cookies": true
+  },
+  "infzm.com": {
+    "allow_cookies": true
+  },
+  "spacenews.com": {
+    "allow_cookies": true
+  },
+  "spektrum.de": {
+    "allow_cookies": true
+  },
+  "businesstimes.com.sg": {
+    "allow_cookies": true
+  },
+  "straitstimes.com": {
+    "allow_cookies": true
+  },
+  "si.com": {
+    "allow_cookies": true
+  },
+  "springermedizin.de": {
+    "allow_cookies": true
+  },
+  "standardmedia.co.ke": {
+    "allow_cookies": true
+  },
+  "startribune.com": {
+    "allow_cookies": true
+  },
+  "statnews.com": {
+    "allow_cookies": true
+  },
+  "stereogum.com": {
+    "allow_cookies": true
+  },
+  "stern.de": {
+    "allow_cookies": true
+  },
+  "stocknews.com": {
+    "allow_cookies": true
+  },
+  "stratfor.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "study.com": {
+    "allow_cookies": true
+  },
+  "stylist.co.uk": {
+    "allow_cookies": true
+  },
+  "schwarzwaelder-bote.de": {
+    "allow_cookies": true
+  },
+  "stuttgarter-nachrichten.de": {
+    "allow_cookies": true
+  },
+  "stuttgarter-zeitung.de": {
+    "allow_cookies": true
+  },
+  "suomensotilas.fi": {
+    "allow_cookies": true
+  },
+  "sueddeutsche.de": {
+    "allow_cookies": true
+  },
+  "suedkurier.de": {
+    "allow_cookies": true
+  },
+  "swarajyamag.com": {
+    "allow_cookies": true
+  },
+  "24heures.ch": {
+    "useragent": "googlebot"
+  },
+  "bazonline.ch": {
+    "useragent": "googlebot"
+  },
+  "bernerzeitung.ch": {
+    "useragent": "googlebot"
+  },
+  "derbund.ch": {
+    "useragent": "googlebot"
+  },
+  "tagesanzeiger.ch": {
+    "useragent": "googlebot"
+  },
+  "tdg.ch": {
+    "useragent": "googlebot"
+  },
+  "tampabay.com": {
+    "allow_cookies": true
+  },
+  "techinasia.com": {
+    "allow_cookies": true
+  },
+  "computerweekly.com": {
+    "allow_cookies": true
+  },
+  "lemagit.fr": {
+    "allow_cookies": true
+  },
+  "techtarget.com": {
+    "allow_cookies": true
+  },
+  "telegraaf.nl": {},
+  "telerama.fr": {
+    "allow_cookies": true
+  },
+  "tes.com": {},
+  "texasmonthly.com": {
+    "allow_cookies": true
+  },
+  "nola.com": {
+    "allow_cookies": true
+  },
+  "shreveportbossieradvocate.com": {
+    "allow_cookies": true
+  },
+  "theadvocate.com": {
+    "allow_cookies": true
+  },
+  "theamericanconservative.com": {
+    "allow_cookies": true
+  },
+  "the-american-interest.com": {
+    "allow_cookies": true
+  },
+  "theamericanscholar.org": {
+    "allow_cookies": true
+  },
+  "theartnewspaper.com": {
+    "allow_cookies": true
+  },
+  "ajc.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "theatlantic.com": {
+    "allow_cookies": true
+  },
+  "thebaffler.com": {
+    "allow_cookies": true
+  },
+  "thebanner.com": {
+    "allow_cookies": true
+  },
+  "bostonglobe.com": {
+    "allow_cookies": true
+  },
+  "bizjournals.com": {
+    "allow_cookies": true
+  },
+  "businessoffashion.com": {
+    "allow_cookies": true
+  },
+  "csmonitor.com": {
+    "allow_cookies": true
+  },
+  "chronicle.com": {
+    "allow_cookies": true
+  },
+  "philanthropy.com": {
+    "allow_cookies": true
+  },
+  "columbian.com": {},
+  "thecritic.co.uk": {},
+  "thedailybeast.com": {},
+  "dailywire.com": {
+    "allow_cookies": true
+  },
+  "dallasnews.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "thediplomat.com": {
+    "useragent": "facebookbot"
+  },
+  "thedispatch.com": {
+    "allow_cookies": true
+  },
+  "economictimes.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "economictimes.indiatimes.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "epaper.indiatimes.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "economist.com": {
+    "useragent_custom": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.6533.103 Mobile Safari/537.36 Liskov",
+    "allow_cookies": true
+  },
+  "epoch.org.il": {
+    "allow_cookies": true
+  },
+  "theepochtimes.com": {
+    "allow_cookies": true
+  },
+  "financialexpress.com": {
+    "allow_cookies": true
+  },
+  "theglobeandmail.com": {
+    "allow_cookies": true
+  },
+  "thehill.com": {
+    "allow_cookies": true
+  },
+  "hilltimes.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "thehindu.com": {
+    "allow_cookies": true
+  },
+  "thehindubusinessline.com": {
+    "allow_cookies": true
+  },
+  "independent.co.uk": {
+    "allow_cookies": true
+  },
+  "the-independent.com": {
+    "allow_cookies": true
+  },
+  "indianexpress.com": {
+    "allow_cookies": true
+  },
+  "theinformation.com": {
+    "allow_cookies": true
+  },
+  "theintercept.com": {
+    "allow_cookies": true
+  },
+  "irishexaminer.com": {},
+  "irishnews.com": {
+    "allow_cookies": true
+  },
+  "irishtimes.com": {
+    "allow_cookies": true
+  },
+  "japantimes.co.jp": {},
+  "jpost.com": {
+    "allow_cookies": true
+  },
+  "thejuggernaut.com": {
+    "allow_cookies": true
+  },
+  "jgnt.co": {
+    "allow_cookies": true
+  },
+  "thelampmagazine.com": {
+    "allow_cookies": true
+  },
+  "thelawyer.com": {
+    "allow_cookies": true
+  },
+  "theleaflet.in": {
+    "allow_cookies": true
+  },
+  "thelogic.co": {},
+  "themarket.ch": {
+    "allow_cookies": true
+  },
+  "thenation.com": {
+    "allow_cookies": true
+  },
+  "thenewatlantis.com": {
+    "allow_cookies": true
+  },
+  "newcriterion.com": {
+    "allow_cookies": true
+  },
+  "newrepublic.com": {
+    "allow_cookies": true
+  },
+  "newstatesman.com": {
+    "allow_cookies": true
+  },
+  "thenewworld.co.uk": {
+    "allow_cookies": true
+  },
+  "nybooks.com": {
+    "allow_cookies": true
+  },
+  "nysun.com": {
+    "allow_cookies": true
+  },
+  "nytimes.com": {
+    "useragent_custom": "Mozilla/5.0 (compatible; Google-InspectionTool/1.0)",
+    "allow_cookies": true
+  },
+  "thenewslens.com": {
+    "allow_cookies": true
+  },
+  "thenewsminute.com": {
+    "allow_cookies": true
+  },
+  "observer.co.uk": {
+    "allow_cookies": true
+  },
+  "the-past.com": {},
+  "inquirer.com": {
+    "allow_cookies": true
+  },
+  "thepointmag.com": {},
+  "thequint.com": {
+    "allow_cookies": true
+  },
+  "sltrib.com": {
+    "allow_cookies": true
+  },
+  "sfstandard.com": {},
+  "thesaturdaypaper.com.au": {},
+  "the-scientist.com": {
+    "allow_cookies": true
+  },
+  "seattletimes.com": {
+    "allow_cookies": true
+  },
+  "spectator.com": {
+    "allow_cookies": true
+  },
+  "spectator.com.au": {
+    "allow_cookies": true
+  },
+  "apollo-magazine.com": {
+    "allow_cookies": true
+  },
+  "spokesman.com": {
+    "allow_cookies": true
+  },
+  "thebookseller.com": {
+    "allow_cookies": true,
+    "useragent": "googlebot"
+  },
+  "thestage.co.uk": {
+    "allow_cookies": true
+  },
+  "thescottishsun.co.uk": {
+    "allow_cookies": true
+  },
+  "thesun.co.uk": {
+    "allow_cookies": true
+  },
+  "telegraph.co.uk": {
+    "allow_cookies": true
+  },
+  "thetimes.com": {
+    "allow_cookies": true
+  },
+  "the-tls.com": {
+    "allow_cookies": true
+  },
+  "niagarafallsreview.ca": {
+    "allow_cookies": true
+  },
+  "stcatharinesstandard.ca": {
+    "allow_cookies": true
+  },
+  "thepeterboroughexaminer.com": {
+    "allow_cookies": true
+  },
+  "therecord.com": {
+    "allow_cookies": true
+  },
+  "thespec.com": {
+    "allow_cookies": true
+  },
+  "thestar.com": {
+    "allow_cookies": true
+  },
+  "wellandtribune.ca": {
+    "allow_cookies": true
+  },
+  "wsj.com": {
+    "referer_custom": "https: nullwww.drudgereport.com/",
+    "allow_cookies": true
+  },
+  "washingtonpost.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "theweek.com": {
+    "allow_cookies": true
+  },
+  "thewest.com.au": {
+    "allow_cookies": true
+  },
+  "thewrap.com": {},
+  "timeshighereducation.com": {
+    "allow_cookies": true
+  },
+  "tomshardware.com": {
+    "allow_cookies": true
+  },
+  "baltimoresun.com": {
+    "allow_cookies": true
+  },
+  "capitalgazette.com": {
+    "allow_cookies": true
+  },
+  "chicagotribune.com": {
+    "allow_cookies": true
+  },
+  "courant.com": {
+    "allow_cookies": true
+  },
+  "dailypress.com": {
+    "allow_cookies": true
+  },
+  "mcall.com": {
+    "allow_cookies": true
+  },
+  "nydailynews.com": {
+    "allow_cookies": true
+  },
+  "orlandosentinel.com": {
+    "allow_cookies": true
+  },
+  "pilotonline.com": {
+    "allow_cookies": true
+  },
+  "sun-sentinel.com": {
+    "allow_cookies": true
+  },
+  "tuttosport.com": {
+    "allow_cookies": true
+  },
+  "unherd.com": {
+    "allow_cookies": true
+  },
+  "uol.com.br": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "usatoday.com": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "valeursactuelles.com": {
+    "allow_cookies": true
+  },
+  "allgemeine-zeitung.de": {
+    "allow_cookies": true
+  },
+  "echo-online.de": {
+    "allow_cookies": true
+  },
+  "wiesbadener-kurier.de": {
+    "allow_cookies": true
+  },
+  "vice.com": {
+    "allow_cookies": true
+  },
+  "vikatan.com": {
+    "allow_cookies": true
+  },
+  "voguebusiness.com": {},
+  "vn.at": {
+    "allow_cookies": true
+  },
+  "vol.at": {
+    "allow_cookies": true
+  },
+  "curbed.com": {
+    "allow_cookies": true
+  },
+  "grubstreet.com": {
+    "allow_cookies": true
+  },
+  "nymag.com": {
+    "allow_cookies": true
+  },
+  "thecut.com": {
+    "allow_cookies": true
+  },
+  "theverge.com": {
+    "allow_cookies": true
+  },
+  "vox.com": {
+    "allow_cookies": true
+  },
+  "vulture.com": {
+    "allow_cookies": true
+  },
+  "vn.nl": {
+    "allow_cookies": true
+  },
+  "warontherocks.com": {
+    "allow_cookies": true
+  },
+  "washingtonexaminer.com": {
+    "allow_cookies": true
+  },
+  "weltkunst.de": {
+    "useragent": "googlebot",
+    "allow_cookies": true
+  },
+  "weser-kurier.de": {
+    "allow_cookies": true
+  },
+  "winnipegfreepress.com": {
+    "allow_cookies": true
+  },
+  "wiwo.de": {
+    "allow_cookies": true
+  },
+  "wonderzine.com": {
+    "useragent": "facebookbot",
+    "allow_cookies": true
+  },
+  "worldeconomics.com": {
+    "allow_cookies": true
+  },
+  "magazyn-kuchnia.pl": {
+    "allow_cookies": true
+  },
+  "wyborcza.biz": {
+    "allow_cookies": true
+  },
+  "wyborcza.pl": {
+    "allow_cookies": true
+  },
+  "wysokieobcasy.pl": {
+    "allow_cookies": true
+  },
+  "ynet.co.il": {
+    "allow_cookies": true
+  },
+  "cdn.ampproject.org": {
+    "allow_cookies": true
+  },
+  "amplitude.com": {
+    "allow_cookies": true
+  },
+  "blueconic.net": {
+    "allow_cookies": true
+  },
+  "cxense.com": {
+    "allow_cookies": true
+  },
+  "ensighten.com": {
+    "allow_cookies": true
+  },
+  "evolok.net": {
+    "allow_cookies": true
+  },
+  "fewcents.co": {
+    "allow_cookies": true
+  },
+  "matheranalytics.com": {
+    "allow_cookies": true
+  },
+  "newsmemory.com": {
+    "allow_cookies": true
+  },
+  "memberstack.com": {
+    "allow_cookies": true
+  },
+  "omeda.com": {
+    "allow_cookies": true
+  },
+  "onecount.net": {
+    "allow_cookies": true
+  },
+  "pelcro.com": {
+    "allow_cookies": true
+  },
+  "piano.io": {
+    "allow_cookies": true
+  },
+  "pico.tools": {
+    "allow_cookies": true
+  },
+  "poool.fr": {
+    "allow_cookies": true
+  },
+  "qiota.com": {
+    "allow_cookies": true
+  },
+  "sophi.io": {
+    "allow_cookies": true
+  },
+  "steadyhq.com": {
+    "allow_cookies": true
+  },
+  "zephr.com": {
+    "allow_cookies": true
+  }
+}

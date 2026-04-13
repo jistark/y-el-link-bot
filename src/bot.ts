@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard, InputMediaBuilder, Context, InputFile } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
+import { hasRecipe } from './extractors/recipes.js';
 import { isPageUrl, fetchPageArticles, extractByArticleId, type PageArticleInfo } from './extractors/elmercurio.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
@@ -851,7 +852,7 @@ export function createBot(token: string): Bot {
     for (const rawUrl of rawUrls) {
       const url = deAmpUrl(rawUrl);
       const source = detectSource(url);
-      if (!source) continue;
+      if (!source && !hasRecipe(url)) continue;
 
       // Rate limiting por usuario (skip si no hay userId)
       if (ctx.from?.id && isRateLimited(ctx.from.id)) continue;
