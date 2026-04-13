@@ -21,5 +21,9 @@ COPY src ./src
 COPY scripts ./scripts
 COPY tsconfig.json ./
 
+# Copiar datos estáticos (bypass-rules.json va fuera de data/ porque
+# el persistent disk se monta en /app/data y lo sobreescribiría)
+COPY data/bypass-rules.json ./bypass-rules.json
+
 # El bot corre como proceso principal
 CMD ["bun", "run", "src/index.ts"]

@@ -21,10 +21,19 @@ export interface RecipeHeaders {
 }
 
 // Load rules once at module load time
-const rulesPath = join(import.meta.dir, '../../data/bypass-rules.json');
+// bypass-rules.json is a static compile-time asset, NOT runtime data.
+// It lives at /app/bypass-rules.json in Docker (outside the persistent
+// disk mount at /app/data). Locally, fall back to data/ in the repo.
+const rulesPath = join(process.cwd(), 'bypass-rules.json');
+const fallbackPath = join(process.cwd(), 'data', 'bypass-rules.json');
 const allRules: Record<string, BypassRule> = (() => {
   try {
-    const raw = readFileSync(rulesPath, 'utf-8');
+    let raw: string;
+    try {
+      raw = readFileSync(rulesPath, 'utf-8');
+    } catch {
+      raw = readFileSync(fallbackPath, 'utf-8');
+    }
     const parsed = JSON.parse(raw);
     delete parsed._meta;
     return parsed;
