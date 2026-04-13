@@ -1,7 +1,5 @@
-import { InlineKeyboard } from 'grammy';
+import { InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
-import type { Article } from '../types.js';
-import { createPage } from '../formatters/telegraph.js';
 import { decodeEntities, sendWithRetry } from '../utils/shared.js';
 import { addRegistryEntry } from './registry.js';
 import { createPoller } from './poller-base.js';
@@ -45,28 +43,41 @@ export function parseFotoportadasItems(xml: string): FotoportadasRssItem[] {
 
 // --- Image extraction ---
 
-function extractFotoportadaImages(html: string): { url: string }[] {
-  const images: { url: string }[] = [];
+const MAX_PHOTO_SIZE = 9 * 1024 * 1024; // 9 MB safety margin
+
+function extractFotoportadaImages(html: string): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
   const imgRegex = /<img\s[^>]*src=["']([^"']+)["'][^>]*>/gi;
   let match;
 
   while ((match = imgRegex.exec(html)) !== null) {
     const url = match[1];
     // Keep only mcusercontent.com images (actual newspaper front pages)
-    // Skip sawa-dev storage images (logo)
-    if (url.includes('mcusercontent.com') && !url.includes('sawa-dev')) {
-      images.push({ url });
+    // Skip sawa-dev storage images (logo), deduplicate (email HTML repeats 3x)
+    if (url.includes('mcusercontent.com') && !url.includes('sawa-dev') && !seen.has(url)) {
+      seen.add(url);
+      urls.push(url);
     }
   }
 
-  return images;
+  return urls;
 }
 
-// Build Telegraph body HTML from images
-function buildFotoportadasBody(images: { url: string }[]): string {
-  return images.map(img =>
-    `<figure><img src="${img.url}"></figure>`
-  ).join('\n');
+// Download images as buffers for Telegram media group
+async function downloadPhotos(urls: string[]): Promise<{ buf: Uint8Array; name: string }[]> {
+  const photos: { buf: Uint8Array; name: string }[] = [];
+  for (const url of urls.slice(0, 10)) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) continue;
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.length > MAX_PHOTO_SIZE) continue;
+      const ext = url.endsWith('.jpg') ? 'jpg' : 'png';
+      photos.push({ buf, name: `portada_${photos.length}.${ext}` });
+    } catch { /* skip */ }
+  }
+  return photos;
 }
 
 // --- Regen keyboard ---
@@ -90,9 +101,9 @@ const poller = createPoller<FotoportadasRssItem>({
     return items.filter(item => item.title.startsWith('Fotoportadas') && !posted.has(item.guid)).reverse();
   },
   async processItem(api, chatId, item, posted, save) {
-    const images = extractFotoportadaImages(item.contentEncoded);
+    const urls = extractFotoportadaImages(item.contentEncoded);
 
-    if (images.length === 0) {
+    if (urls.length === 0) {
       console.log(JSON.stringify({
         event: 'fotoportadas_no_images',
         guid: item.guid,
@@ -104,45 +115,53 @@ const poller = createPoller<FotoportadasRssItem>({
       return;
     }
 
-    const body = buildFotoportadasBody(images);
+    const photos = await downloadPhotos(urls);
+    if (photos.length === 0) {
+      posted.add(item.guid);
+      await save();
+      return;
+    }
 
-    // Build Article for Telegraph
-    const article: Article = {
-      title: item.title,
-      body,
-      url: item.link,
-      source: 'adprensa',
-      date: item.pubDate,
-      images: images.map(img => ({ url: img.url })),
-    };
+    // Send as photo album (carousel) — caption on first photo
+    const caption = `\u{1F4F0} <b>${item.title}</b>`;
+    let messageId: number | undefined;
 
-    // Create Telegraph page
-    const result = await createPage(article);
-
-    // Post Telegraph link to channel with regen button
-    const keyboard = createRssRegenKeyboard('adprensa', item.guid);
-    const sent = await sendWithRetry(
-      () => api.sendMessage(chatId, result.url, {
-        disable_notification: true,
-        reply_markup: keyboard,
-      }),
-      'sendMessage', 'fotoportadas',
-    );
+    if (photos.length >= 2) {
+      const mediaGroup = photos.map((p, i) =>
+        InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? {
+          caption,
+          parse_mode: 'HTML' as const,
+        } : {}),
+      );
+      const sent = await sendWithRetry(
+        () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
+        'sendMediaGroup', 'fotoportadas',
+      );
+      messageId = sent[0]?.message_id;
+    } else {
+      const sent = await sendWithRetry(
+        () => api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+          caption,
+          parse_mode: 'HTML',
+          disable_notification: true,
+        }),
+        'sendPhoto', 'fotoportadas',
+      );
+      messageId = sent.message_id;
+    }
 
     posted.add(item.guid);
     await save();
 
-    // Persist to registry (survives redeploys)
     addRegistryEntry({
       type: 'rss-adprensa',
       originalUrl: item.link,
       guid: item.guid,
-      source: 'adprensa',
-      telegraphPath: result.path,
+      source: 'fotoportadas',
       title: item.title,
       chatId,
-      messageId: sent.message_id,
-    }).catch(() => {}); // non-blocking
+      messageId,
+    }).catch(() => {});
   },
 });
 
@@ -161,45 +180,44 @@ export async function fetchLatestFotoportadas(api: Api, chatId: number, threadId
 
   if (!item) return false;
 
-  const images = extractFotoportadaImages(item.contentEncoded);
-  if (images.length === 0) return false;
+  const urls = extractFotoportadaImages(item.contentEncoded);
+  if (urls.length === 0) return false;
 
-  const body = buildFotoportadasBody(images);
+  const photos = await downloadPhotos(urls);
+  if (photos.length === 0) return false;
 
-  const article: Article = {
-    title: item.title,
-    body,
-    url: item.link,
-    source: 'adprensa',
-    date: item.pubDate,
-    images: images.map(img => ({ url: img.url })),
-  };
+  const caption = `\u{1F4F0} <b>${item.title}</b>`;
+  const threadOpts = threadId ? { message_thread_id: threadId } : {};
+  let messageId: number | undefined;
 
-  const result = await createPage(article);
+  if (photos.length >= 2) {
+    const mediaGroup = photos.map((p, i) =>
+      InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? {
+        caption,
+        parse_mode: 'HTML' as const,
+      } : {}),
+    );
+    const sent = await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
+    messageId = sent[0]?.message_id;
+  } else {
+    const sent = await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+      caption, parse_mode: 'HTML', disable_notification: true, ...threadOpts,
+    });
+    messageId = sent.message_id;
+  }
 
-  const keyboard = createRssRegenKeyboard('adprensa', item.guid);
-  const sent = await api.sendMessage(chatId, result.url, {
-    disable_notification: true,
-    link_preview_options: { is_disabled: true },
-    reply_markup: keyboard,
-    ...(threadId ? { message_thread_id: threadId } : {}),
-  });
-
-  // Mark as posted in shared set so the poller doesn't duplicate it
   const posted = await poller.getPostedGuids();
   posted.add(item.guid);
   await poller.savePostedGuids(posted);
 
-  // Persist to registry
   addRegistryEntry({
     type: 'rss-adprensa',
     originalUrl: item.link,
     guid: item.guid,
-    source: 'adprensa',
-    telegraphPath: result.path,
+    source: 'fotoportadas',
     title: item.title,
     chatId,
-    messageId: sent.message_id,
+    messageId,
   }).catch(() => {});
 
   return true;
