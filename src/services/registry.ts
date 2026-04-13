@@ -1,15 +1,18 @@
 /**
- * Persistent registry of processed items, stored as a Telegraph page.
+ * Persistent registry of processed items, stored on disk.
  *
- * Survives Render redeploys (filesystem is ephemeral) by using Telegraph
- * itself as a key-value store: a hidden page titled "__registry__" holds
- * JSON in a <pre> node, editable via the same access_token used for articles.
+ * With Render's persistent disk mounted at /app/data, the registry
+ * file survives redeploys. Simple file I/O replaces the previous
+ * Telegraph API approach — faster and no HTTP round-trips.
  *
  * Capacity: last MAX_ENTRIES items (~100), FIFO rotation.
  */
 
-const TELEGRAPH_API = 'https://api.telegra.ph';
-const REGISTRY_TITLE = '__registry__';
+import { readFile, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { mkdirSync } from 'fs';
+
+const REGISTRY_PATH = join(process.cwd(), 'data', 'registry.json');
 const MAX_ENTRIES = 100;
 
 export interface RegistryEntry {
@@ -34,59 +37,7 @@ export interface RegistryEntry {
 }
 
 let entriesCache: RegistryEntry[] | null = null;
-let pagePath: string | null = null;
 let savePromise: Promise<void> | null = null;
-
-function getToken(): string {
-  const token = process.env.TELEGRAPH_ACCESS_TOKEN;
-  if (!token) throw new Error('TELEGRAPH_ACCESS_TOKEN not set');
-  return token;
-}
-
-// --- Telegraph page discovery/creation ---
-
-async function findRegistryPage(): Promise<string | null> {
-  try {
-    const res = await fetch(`${TELEGRAPH_API}/getPageList`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ access_token: getToken(), limit: 200 }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const data = await res.json() as any;
-    if (!data.ok) return null;
-
-    const page = data.result?.pages?.find((p: any) => p.title === REGISTRY_TITLE);
-    return page?.path || null;
-  } catch {
-    return null;
-  }
-}
-
-async function createRegistryPage(): Promise<string> {
-  const res = await fetch(`${TELEGRAPH_API}/createPage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      access_token: getToken(),
-      title: REGISTRY_TITLE,
-      author_name: 'bot-internal',
-      content: [{ tag: 'pre', children: ['[]'] }],
-      return_content: false,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const data = await res.json() as any;
-  if (!data.ok) throw new Error(`Failed to create registry page: ${data.error}`);
-
-  console.log(JSON.stringify({
-    event: 'registry_created',
-    path: data.result.path,
-    timestamp: new Date().toISOString(),
-  }));
-
-  return data.result.path;
-}
 
 // --- Load / Save ---
 
@@ -94,27 +45,10 @@ async function loadEntries(): Promise<RegistryEntry[]> {
   if (entriesCache) return entriesCache;
 
   try {
-    // Find or create the registry page
-    pagePath = await findRegistryPage();
-    if (!pagePath) pagePath = await createRegistryPage();
-
-    const res = await fetch(
-      `${TELEGRAPH_API}/getPage/${pagePath}?return_content=true`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
-    const data = await res.json() as any;
-    if (!data.ok) { entriesCache = []; return entriesCache; }
-
-    // JSON is stored inside a <pre> node
-    const preNode = data.result?.content?.find((n: any) => n.tag === 'pre');
-    const raw = typeof preNode?.children?.[0] === 'string' ? preNode.children[0] : '[]';
+    const raw = await readFile(REGISTRY_PATH, 'utf-8');
     entriesCache = JSON.parse(raw);
-  } catch (err: any) {
-    console.error(JSON.stringify({
-      event: 'registry_load_error',
-      error: err?.message || String(err),
-      timestamp: new Date().toISOString(),
-    }));
+  } catch {
+    // File doesn't exist yet or is corrupted — start fresh
     entriesCache = [];
   }
 
@@ -122,23 +56,12 @@ async function loadEntries(): Promise<RegistryEntry[]> {
 }
 
 async function saveEntries(): Promise<void> {
-  if (!entriesCache || !pagePath) return;
+  if (!entriesCache) return;
 
   try {
+    try { mkdirSync(join(process.cwd(), 'data'), { recursive: true }); } catch { /* ok */ }
     const json = JSON.stringify(entriesCache.slice(-MAX_ENTRIES));
-    await fetch(`${TELEGRAPH_API}/editPage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        access_token: getToken(),
-        path: pagePath,
-        title: REGISTRY_TITLE,
-        author_name: 'bot-internal',
-        content: [{ tag: 'pre', children: [json] }],
-        return_content: false,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
+    await writeFile(REGISTRY_PATH, json, 'utf-8');
   } catch (err: any) {
     console.error(JSON.stringify({
       event: 'registry_save_error',
@@ -148,9 +71,9 @@ async function saveEntries(): Promise<void> {
   }
 }
 
-// Debounce saves: batch rapid writes into a single Telegraph API call
+// Debounce saves: batch rapid writes into a single disk write
 function scheduleSave(): void {
-  if (savePromise) return; // already scheduled
+  if (savePromise) return;
   savePromise = new Promise<void>((resolve) => {
     setTimeout(async () => {
       await saveEntries();
@@ -177,7 +100,6 @@ export async function addRegistryEntry(entry: Omit<RegistryEntry, 'timestamp'>):
 
 export async function findByTelegraphPath(path: string): Promise<RegistryEntry | undefined> {
   const entries = await loadEntries();
-  // Search from end (most recent first)
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i].telegraphPath === path) return entries[i];
   }
