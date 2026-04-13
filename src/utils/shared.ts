@@ -17,6 +17,7 @@ export function randomUA(): string {
 // --- HTML entities ---
 
 const HTML_ENTITIES: Record<string, string> = {
+  // Básicas
   '&nbsp;': ' ',
   '&amp;': '&',
   '&lt;': '<',
@@ -24,11 +25,51 @@ const HTML_ENTITIES: Record<string, string> = {
   '&quot;': '"',
   '&#39;': "'",
   '&apos;': "'",
+  // Puntuación
   '&ndash;': '–',
   '&mdash;': '—',
   '&hellip;': '…',
   '&laquo;': '«',
   '&raquo;': '»',
+  '&ldquo;': '\u201C',
+  '&rdquo;': '\u201D',
+  '&lsquo;': '\u2018',
+  '&rsquo;': '\u2019',
+  '&bull;': '•',
+  '&middot;': '·',
+  '&iexcl;': '¡',
+  '&iquest;': '¿',
+  '&deg;': '°',
+  '&ordm;': 'º',
+  '&ordf;': 'ª',
+  '&trade;': '™',
+  '&copy;': '©',
+  '&reg;': '®',
+  // Monedas
+  '&euro;': '€',
+  '&pound;': '£',
+  '&yen;': '¥',
+  '&cent;': '¢',
+  // Vocales acentuadas (minúsculas y mayúsculas)
+  '&aacute;': 'á', '&Aacute;': 'Á',
+  '&eacute;': 'é', '&Eacute;': 'É',
+  '&iacute;': 'í', '&Iacute;': 'Í',
+  '&oacute;': 'ó', '&Oacute;': 'Ó',
+  '&uacute;': 'ú', '&Uacute;': 'Ú',
+  '&ntilde;': 'ñ', '&Ntilde;': 'Ñ',
+  '&uuml;': 'ü', '&Uuml;': 'Ü',
+  // Otros acentos comunes
+  '&agrave;': 'à', '&Agrave;': 'À',
+  '&egrave;': 'è', '&Egrave;': 'È',
+  '&igrave;': 'ì', '&Igrave;': 'Ì',
+  '&ograve;': 'ò', '&Ograve;': 'Ò',
+  '&ugrave;': 'ù', '&Ugrave;': 'Ù',
+  '&acirc;': 'â', '&Acirc;': 'Â',
+  '&ecirc;': 'ê', '&Ecirc;': 'Ê',
+  '&icirc;': 'î', '&Icirc;': 'Î',
+  '&ocirc;': 'ô', '&Ocirc;': 'Ô',
+  '&ucirc;': 'û', '&Ucirc;': 'Û',
+  '&ccedil;': 'ç', '&Ccedil;': 'Ç',
 };
 
 export function decodeEntities(text: string): string {
@@ -36,9 +77,12 @@ export function decodeEntities(text: string): string {
   for (const [entity, char] of Object.entries(HTML_ENTITIES)) {
     decoded = decoded.replaceAll(entity, char);
   }
-  // Numeric entities: &#123; &#8211; etc.
+  // Numeric entities: &#123; &#x1F4A9; etc.
+  decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+    String.fromCodePoint(parseInt(hex, 16))
+  );
   decoded = decoded.replace(/&#(\d+);/g, (_, code) =>
-    String.fromCharCode(parseInt(code, 10))
+    String.fromCodePoint(parseInt(code, 10))
   );
   return decoded;
 }

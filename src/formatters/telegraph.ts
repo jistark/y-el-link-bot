@@ -311,7 +311,7 @@ export function articleToNodes(article: Article): TelegraphNode[] {
 
   // Subtítulo como blockquote
   if (article.subtitle) {
-    nodes.push({ tag: 'blockquote', children: [article.subtitle] });
+    nodes.push({ tag: 'blockquote', children: [decodeEntities(article.subtitle)] });
   }
 
   // Imágenes principales al inicio
@@ -376,7 +376,7 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
     body: JSON.stringify({
       access_token: token,
       path,
-      title: article.title,
+      title: decodeEntities(article.title),
       author_name: getSourceName(article.source),
       author_url: article.url,
       content,
