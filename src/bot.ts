@@ -1,6 +1,40 @@
 import { Bot, InlineKeyboard, InputMediaBuilder, Context, InputFile } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { hasRecipe } from './extractors/recipes.js';
+
+// Domains that should never be extracted (social media, video, non-article)
+const SKIP_DOMAINS = new Set([
+  'youtube.com', 'youtu.be', 'twitter.com', 'x.com', 'instagram.com',
+  'facebook.com', 'fb.com', 'tiktok.com', 'reddit.com', 'linkedin.com',
+  'pinterest.com', 'tumblr.com', 'twitch.tv', 'discord.com', 'discord.gg',
+  'spotify.com', 'apple.com', 'music.apple.com', 'soundcloud.com',
+  'github.com', 'gitlab.com', 'bitbucket.org', 'stackoverflow.com',
+  'docs.google.com', 'drive.google.com', 'maps.google.com',
+  'amazon.com', 'mercadolibre.cl', 'ebay.com', 'aliexpress.com',
+  'wikipedia.org', 'wikimedia.org',
+  't.me', 'telegram.org', 'wa.me', 'whatsapp.com',
+  'wetransfer.com', 'we.tl', 'mega.nz', 'dropbox.com',
+]);
+
+function isExtractableUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    // Block known non-article domains
+    if (SKIP_DOMAINS.has(host)) return false;
+    for (const skip of SKIP_DOMAINS) {
+      if (host.endsWith('.' + skip)) return false;
+    }
+    // Must have a path beyond "/" (skip homepages)
+    if (u.pathname === '/' || u.pathname === '') return false;
+    // If it has a recipe, always allow
+    if (hasRecipe(url)) return true;
+    // Otherwise allow — generic extractor + quality gate will filter
+    return true;
+  } catch {
+    return false;
+  }
+}
 import { isPageUrl, fetchPageArticles, extractByArticleId, type PageArticleInfo } from './extractors/elmercurio.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
@@ -852,7 +886,10 @@ export function createBot(token: string): Bot {
     for (const rawUrl of rawUrls) {
       const url = deAmpUrl(rawUrl);
       const source = detectSource(url);
-      if (!source && !hasRecipe(url)) continue;
+      // Sites with a custom extractor or recipe go through immediately.
+      // All other URLs try the generic extractor (JSON-LD / __NEXT_DATA__ / HTML).
+      // The quality gate in generic.ts filters non-article pages.
+      if (!source && !isExtractableUrl(url)) continue;
 
       // Rate limiting por usuario (skip si no hay userId)
       if (ctx.from?.id && isRateLimited(ctx.from.id)) continue;
