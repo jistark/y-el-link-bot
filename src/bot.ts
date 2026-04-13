@@ -19,10 +19,20 @@ const SKIP_DOMAINS = new Set([
   'ddinstagram.com', 'rxddit.com', 'vxreddit.com',
 ]);
 
+function isPrivateOrReservedHost(hostname: string): boolean {
+  // Loopback
+  if (/^(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])$/i.test(hostname)) return true;
+  // Private ranges (RFC 1918) and link-local / cloud metadata
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(hostname)) return true;
+  return false;
+}
+
 function isExtractableUrl(url: string): boolean {
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/^www\./, '');
+    // Block private/reserved IPs (SSRF protection)
+    if (isPrivateOrReservedHost(u.hostname)) return false;
     // Block known non-article domains
     if (SKIP_DOMAINS.has(host)) return false;
     for (const skip of SKIP_DOMAINS) {
@@ -217,10 +227,18 @@ function extractUrls(text: string): string[] {
 function deAmpUrl(url: string): string {
   // cdn.ampproject.org: https://www-example-com.cdn.ampproject.org/c/s/www.example.com/path
   const ampMatch = url.match(/cdn\.ampproject\.org\/[^/]*\/s\/(.+)/);
-  if (ampMatch) return `https://${ampMatch[1]}`;
+  if (ampMatch) {
+    const deamped = `https://${ampMatch[1]}`;
+    try { if (isPrivateOrReservedHost(new URL(deamped).hostname)) return url; } catch { return url; }
+    return deamped;
+  }
   // Google AMP cache: https://www.google.com/amp/s/www.example.com/path
   const googleAmpMatch = url.match(/google\.com\/amp\/s\/(.+)/);
-  if (googleAmpMatch) return `https://${googleAmpMatch[1]}`;
+  if (googleAmpMatch) {
+    const deamped = `https://${googleAmpMatch[1]}`;
+    try { if (isPrivateOrReservedHost(new URL(deamped).hostname)) return url; } catch { return url; }
+    return deamped;
+  }
   return url;
 }
 
@@ -897,8 +915,9 @@ export function createBot(token: string): Bot {
       // The quality gate in generic.ts filters non-article pages.
       if (!source && !isExtractableUrl(url)) continue;
 
-      // Rate limiting por usuario (skip si no hay userId)
-      if (ctx.from?.id && isRateLimited(ctx.from.id)) continue;
+      // Rate limiting — skip extraction if no userId (can't rate-limit anonymous sources)
+      const userId = ctx.from?.id;
+      if (!userId || isRateLimited(userId)) continue;
 
       // El Mercurio: URLs de página necesitan selección de artículo
       if (source === 'elmercurio' && isPageUrl(url)) {
@@ -1120,6 +1139,11 @@ export function createBot(token: string): Bot {
       const createdAtB36 = parts.pop()!;
       const ownerIdStr = parts.pop()!;
       const telegraphPath = parts.join(':');
+      // Validate path format — Telegraph paths are alphanumeric + hyphens
+      if (!/^[\w-]+$/.test(telegraphPath)) {
+        await ctx.answerCallbackQuery({ text: 'Path inválido', show_alert: true });
+        return;
+      }
       const ownerId = parseInt(ownerIdStr, 10);
       const createdAt = parseInt(createdAtB36, 36) * 1000;
       const userId = ctx.from?.id;
@@ -1392,11 +1416,10 @@ export function createBot(token: string): Bot {
               );
               const sent = await ctx.api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true });
               newMessageId = sent[0]?.message_id;
-              // Follow-up regen button
+              // Follow-up regen button (no reply_to — channels show full preview as dupe)
               await ctx.api.sendMessage(chatId, '\u{1F504}', {
                 disable_notification: true,
                 reply_markup: regenKeyboard,
-                reply_to_message_id: newMessageId,
               });
             } else if (photos.length === 1) {
               const sent = await ctx.api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {

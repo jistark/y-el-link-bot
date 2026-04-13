@@ -1,49 +1,39 @@
 # Y el Link Bot
 
-Bot de Telegram para compartir artículos de noticias en formato legible.
+Bot de Telegram que mejora la experiencia de lectura de enlaces compartidos en grupos.
 
-## Características
+## Qué hace
 
-- Convierte links de noticias a formato Instant View
-- Soporta múltiples fuentes de noticias
-- Botones de acción: borrar, buscar en Archive, buscar en Twitter
-- Sistema de permisos para grupos
+Cuando alguien comparte un enlace de noticias en un grupo, el bot genera una versión de lectura limpia usando [Telegraph](https://telegra.ph), aprovechando el **Instant View** nativo de Telegram — sin salir de la app, sin popups, sin ads.
 
-## Uso
+## Funcionalidades
 
-1. Agrega el bot a tu grupo o chat privado
-2. Envía un link de una fuente soportada
-3. El bot generará una versión legible del artículo
-
-## Configuración
-
-```bash
-cp .env.example .env
-# Editar .env con tus tokens
-```
-
-Variables requeridas:
-- `TELEGRAM_BOT_TOKEN` - Token de BotFather
-- `TELEGRAPH_ACCESS_TOKEN` - Token de Telegraph API
-
-## Desarrollo
-
-```bash
-# Instalar dependencias
-bun install
-
-# Ejecutar en desarrollo
-bun run dev
-
-# Ejecutar en producción
-bun run start
-```
+- Lectura limpia de artículos vía Instant View
+- Soporte para múltiples fuentes de noticias
+- Monitoreo de feeds RSS con publicación automática a canales
+- Comandos utilitarios: horóscopo, tipo de cambio, Mundial 2026
+- Botones de acción: borrar, buscar en Archive.org, buscar en X
 
 ## Stack
 
-- Runtime: Bun
-- Framework: grammy.js
-- Formato: Telegraph API
+- **Runtime:** [Bun](https://bun.sh)
+- **Bot framework:** [grammY](https://grammy.dev)
+- **Formato:** [Telegraph API](https://telegra.ph/api)
+- **Hosting:** [Render](https://render.com)
+
+## Setup
+
+```bash
+cp .env.example .env
+# Completar tokens en .env
+
+bun install
+bun run dev
+```
+
+## Variables de entorno
+
+Ver `.env.example` para la lista completa de variables requeridas.
 
 ## Licencia
 

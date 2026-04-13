@@ -301,17 +301,32 @@ const poller = createPoller<SenalRssItem>({
         () => api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true }),
         'sendMediaGroup', 'rss',
       );
-      // Media groups return array of messages — use first one's ID
       messageId = sent[0]?.message_id;
-      // Media groups can't have inline keyboards, so send a follow-up with the regen button
-      await sendWithRetry(
-        () => api.sendMessage(chatId, '\u{1F504}', {
-          disable_notification: true,
-          reply_markup: keyboard,
-          reply_to_message_id: messageId,
-        }),
-        'sendMessage', 'rss',
-      );
+
+      // Mark as posted NOW — before the optional follow-up button.
+      // If the follow-up fails, the album is already in the channel;
+      // without this, poller-base's catch skips posted.add() → dupe on next cycle.
+      posted.add(item.guid);
+      await save();
+
+      // Media groups can't have inline keyboards, so send a follow-up with the regen button.
+      // No reply_to_message_id — in channels, replies show a full album preview (visual dupe).
+      try {
+        await sendWithRetry(
+          () => api.sendMessage(chatId, '\u{1F504}', {
+            disable_notification: true,
+            reply_markup: keyboard,
+          }),
+          'sendMessage', 'rss',
+        );
+      } catch (err: any) {
+        console.error(JSON.stringify({
+          event: 'rss_regen_button_error',
+          guid: item.guid,
+          error: err?.message || String(err),
+          timestamp: new Date().toISOString(),
+        }));
+      }
     } else if (photos.length === 1) {
       // Single photo with regen keyboard
       const sent = await sendWithRetry(
@@ -324,6 +339,8 @@ const poller = createPoller<SenalRssItem>({
         'sendPhoto', 'rss',
       );
       messageId = sent.message_id;
+      posted.add(item.guid);
+      await save();
     } else {
       // No photos — text-only with regen keyboard
       const sent = await sendWithRetry(
@@ -335,10 +352,9 @@ const poller = createPoller<SenalRssItem>({
         'sendMessage', 'rss',
       );
       messageId = sent.message_id;
+      posted.add(item.guid);
+      await save();
     }
-
-    posted.add(item.guid);
-    await save();
 
     // Persist to registry (survives redeploys)
     addRegistryEntry({
@@ -385,10 +401,10 @@ export async function fetchLatestSenal(api: Api, chatId: number, threadId?: numb
     const sent = await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
     messageId = sent[0]?.message_id;
     // Media groups can't have inline keyboards, send a follow-up regen button
+    // No reply_to — in channels, replies show a full album preview (visual dupe)
     await api.sendMessage(chatId, '\u{1F504}', {
       disable_notification: true,
       reply_markup: keyboard,
-      reply_to_message_id: messageId,
       ...threadOpts,
     });
   } else if (photos.length === 1) {
