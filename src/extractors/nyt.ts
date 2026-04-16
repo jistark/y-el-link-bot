@@ -37,9 +37,11 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 export async function extract(url: string): Promise<Article> {
-  // Google-InspectionTool UA gets full article from NYT
-  // (per bypass-paywalls-chrome-clean: NYT blocks regular Googlebot for /live/ pages)
-  const html = await fetchBypass(url, 'https://www.google.com/', 'inspectiontool');
+  // NYT started returning 403 to Google-InspectionTool. Chrome TLS impersonation
+  // still gets server-rendered HTML with the article body under
+  // <section name="articleBody">, which extractBodyFromHtml parses below.
+  // JSON-LD headline/author metadata are present; articleBody there is empty.
+  const html = await fetchBypass(url, 'https://www.google.com/', 'chrome');
 
   // Extract JSON-LD for metadata
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;

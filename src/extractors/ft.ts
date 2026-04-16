@@ -3,8 +3,12 @@ import { fetchBypass } from './fetch-bypass.js';
 import { type JsonLdArticle, extractAuthor, extractImage } from './helpers/json-ld.js';
 
 function extractBodyFromHtml(html: string): string | null {
-  // FT: article body in article-body or content-body
-  const bodyMatch = html.match(/<div[^>]*class="[^"]*article-body[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/article>/i)
+  // FT's markup has shifted over time. Try current selectors first,
+  // then fall back to legacy ones for older cached pages.
+  const bodyMatch =
+    html.match(/<div[^>]*class="[^"]*article__content[^"]*"[^>]*>([\s\S]*?)<\/article>/i)
+    || html.match(/<div[^>]*class="[^"]*article-content[^"]*"[^>]*>([\s\S]*?)<\/article>/i)
+    || html.match(/<div[^>]*class="[^"]*article-body[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/article>/i)
     || html.match(/<div[^>]*class="[^"]*content-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
 
   if (!bodyMatch) return null;
