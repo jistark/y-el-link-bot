@@ -156,9 +156,11 @@ export function createPoller<T extends BaseRssItem>(config: PollerConfig<T>): Po
   async function start(api: Api): Promise<void> {
     const chatId = parseInt(process.env.POLLER_CHAT_ID || '', 10);
     if (!chatId || isNaN(chatId)) {
-      console.log(JSON.stringify({
+      // Error level so Render surfaces it as a failure signal, not an info log —
+      // an env-var drift silently killed all pollers for ~48h before.
+      console.error(JSON.stringify({
         event: `${name}_poller_disabled`,
-        reason: 'POLLER_CHAT_ID not set',
+        reason: 'POLLER_CHAT_ID env var not set or invalid',
         timestamp: new Date().toISOString(),
       }));
       return;

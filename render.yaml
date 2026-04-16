@@ -17,3 +17,5 @@ services:
         sync: false
       - key: WEBHOOK_URL
         sync: false
+      - key: POLLER_CHAT_ID
+        sync: false
