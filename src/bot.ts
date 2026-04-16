@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard, InputMediaBuilder, Context, InputFile } from 'grammy';
 import { extractArticle, detectSource } from './extractors/index.js';
 import { hasRecipe } from './extractors/recipes.js';
+import { scheduleDelete } from './utils/shared.js';
 
 // Domains that should never be extracted (social media, video, non-article)
 const SKIP_DOMAINS = new Set([
@@ -963,9 +964,10 @@ export function createBot(token: string): Bot {
         try {
           const pageData = await fetchPageArticles(url);
           if (!pageData || pageData.articles.length === 0) {
-            await ctx.reply('❌ No encontré artículos en esa página.', {
+            const sent = await ctx.reply('❌ No encontré artículos en esa página.', {
               reply_to_message_id: ctx.message.message_id,
             });
+            scheduleDelete(ctx.api, sent.chat.id, sent.message_id);
             continue;
           }
 
@@ -1024,9 +1026,10 @@ export function createBot(token: string): Bot {
             error: error instanceof Error ? error.message : String(error),
             timestamp: new Date().toISOString(),
           }));
-          await ctx.reply('❌ No pude acceder a esa página.', {
+          const sent = await ctx.reply('❌ No pude acceder a esa página.', {
             reply_to_message_id: ctx.message.message_id,
           });
+          scheduleDelete(ctx.api, sent.chat.id, sent.message_id);
         }
         continue;
       }
@@ -1096,6 +1099,7 @@ export function createBot(token: string): Bot {
               botMessage.message_id,
               '❌ No pude acceder al artículo.'
             );
+            scheduleDelete(ctx.api, ctx.chat.id, botMessage.message_id);
           } catch {
             // Mensaje ya borrado o inaccesible
           }
@@ -1338,6 +1342,7 @@ export function createBot(token: string): Bot {
         if (chatId && messageId) {
           try {
             await ctx.api.editMessageText(chatId, messageId, '❌ No se pudo regenerar el artículo.');
+            scheduleDelete(ctx.api, chatId, messageId);
           } catch {}
         }
       }
@@ -1602,6 +1607,7 @@ export function createBot(token: string): Bot {
         }));
         try {
           await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '❌ No pude acceder al artículo.');
+          scheduleDelete(ctx.api, sel.chatId, sel.botMessageId);
         } catch {}
       }
       return;
@@ -1634,7 +1640,8 @@ export function createBot(token: string): Bot {
         sent = await fetchLatestFotoportadas(ctx.api, ctx.chat.id, threadId) || sent;
       }
       if (!sent) {
-        await ctx.reply('No encontré publicaciones recientes.');
+        const notFound = await ctx.reply('No encontré publicaciones recientes.');
+        scheduleDelete(ctx.api, notFound.chat.id, notFound.message_id);
       }
     } catch (err: any) {
       console.error(JSON.stringify({
@@ -1642,7 +1649,8 @@ export function createBot(token: string): Bot {
         error: err?.message || String(err),
         timestamp: new Date().toISOString(),
       }));
-      await ctx.reply('Error al obtener la última publicación.');
+      const errMsg = await ctx.reply('Error al obtener la última publicación.');
+      scheduleDelete(ctx.api, errMsg.chat.id, errMsg.message_id);
     }
   });
 

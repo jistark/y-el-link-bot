@@ -116,3 +116,18 @@ export async function sendWithRetry<T>(fn: () => Promise<T>, label: string, even
     throw err;
   }
 }
+
+// Delete a Telegram message after a delay, ignoring failures. Intended for
+// transient notices (extraction errors, etc.) where the message has no
+// long-term value once the user has seen it.
+// deleteMessage fires at most once per id, so network errors are swallowed.
+export function scheduleDelete(
+  api: { deleteMessage: (chatId: number, messageId: number) => Promise<unknown> },
+  chatId: number,
+  messageId: number,
+  afterMs = 10_000,
+): void {
+  setTimeout(() => {
+    api.deleteMessage(chatId, messageId).catch(() => { /* swallow — nothing to do */ });
+  }, afterMs);
+}
