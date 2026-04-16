@@ -114,12 +114,21 @@ const poller = createPoller<AdprensaRssItem>({
   postedPath: 'data/adprensa-posted.json',
   parseItems: parseAdprensaItems,
   filterNew(items, posted) {
-    // Filter: only "Pauta" category, then oldest-first
-    return items.filter(item => item.categories.includes('Pauta') && !posted.has(item.guid)).reverse();
+    // Accept all categories (Pauta, Economía, Gobierno, Crónica, Política,
+    // Congreso, etc.) in oldest-first order so the channel shows them in
+    // chronological order.
+    return items.filter(item => !posted.has(item.guid)).reverse();
   },
   async processItem(api, chatId, item, posted, save) {
+    const isPauta = item.categories.includes('Pauta');
     const contactList = isContactList(item.contentEncoded);
-    const body = contactList ? item.contentEncoded : preprocessPautaContent(item.contentEncoded);
+    // Only Pauta items need the ====/——— → heading transforms; press
+    // releases and other stories come as normal HTML and should pass through.
+    const body = contactList
+      ? item.contentEncoded
+      : isPauta
+        ? preprocessPautaContent(item.contentEncoded)
+        : item.contentEncoded;
 
     // Build Article for Telegraph
     const article: Article = {
