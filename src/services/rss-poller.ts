@@ -311,14 +311,17 @@ const poller = createPoller<SenalRssItem>({
 
       // Media groups can't have inline keyboards, so send a follow-up with the regen button.
       // No reply_to_message_id — in channels, replies show a full album preview (visual dupe).
+      //
+      // No sendWithRetry here: a sendMediaGroup with N photos puts us near Telegram's
+      // per-chat rate window, so the follow-up often gets 429. Retrying 429 is unsafe
+      // for this call because Telegram can deliver the first attempt and still return
+      // 429 — the retry then produces a visible duplicate 🔁. Accept a rare missing
+      // button over a duplicated one.
       try {
-        await sendWithRetry(
-          () => api.sendMessage(chatId, '\u{1F504}', {
-            disable_notification: true,
-            reply_markup: keyboard,
-          }),
-          'sendMessage', 'rss',
-        );
+        await api.sendMessage(chatId, '\u{1F504}', {
+          disable_notification: true,
+          reply_markup: keyboard,
+        });
       } catch (err: any) {
         console.error(JSON.stringify({
           event: 'rss_regen_button_error',
