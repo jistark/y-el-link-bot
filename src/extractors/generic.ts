@@ -72,30 +72,68 @@ const ARTICLE_TYPES = new Set([
   'NewsArticle', 'Article', 'ReportageNewsArticle', 'BlogPosting', 'OpinionNewsArticle',
 ]);
 
+// Turn a JSON-LD articleBody (plain text, sometimes without line breaks) into
+// HTML paragraphs. Tries \n\n, then \n, then falls back to grouping sentences
+// into ~300-char chunks so single-blob bodies still render as multiple <p>s
+// and pass the quality gate downstream.
+function articleBodyToHtml(text: string): string {
+  if (text.includes('<p>')) return text;
+  let parts: string[];
+  if (/\n\n/.test(text)) parts = text.split(/\n\n+/);
+  else if (/\n/.test(text)) parts = text.split(/\n+/);
+  else {
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    parts = [];
+    let cur = '';
+    for (const s of sentences) {
+      cur += (cur ? ' ' : '') + s;
+      if (cur.length >= 300) { parts.push(cur); cur = ''; }
+    }
+    if (cur.trim()) parts.push(cur);
+  }
+  return parts
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p>${p}</p>`)
+    .join('\n');
+}
+
+// Flatten a JSON-LD root into candidate article nodes.
+// Handles three common shapes:
+//   1. single object: {"@type": "NewsArticle", ...}
+//   2. top-level array: [{...}, {...}]
+//   3. schema.org @graph: {"@context": "...", "@graph": [{...}, {...}]}
+function collectArticleCandidates(data: unknown): JsonLdArticle[] {
+  const out: JsonLdArticle[] = [];
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const n of node) visit(n); return; }
+    const obj = node as Record<string, unknown>;
+    if (typeof obj['@type'] === 'string' && ARTICLE_TYPES.has(obj['@type'])) {
+      out.push(obj as JsonLdArticle);
+    }
+    if (Array.isArray(obj['@graph'])) visit(obj['@graph']);
+  };
+  visit(data);
+  return out;
+}
+
 function extractJsonLd(html: string): Partial<Article> | null {
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let match;
 
   while ((match = scriptRegex.exec(html)) !== null) {
     try {
-      let data = JSON.parse(match[1]);
-      // Handle array of JSON-LD objects
-      if (Array.isArray(data)) {
-        data = data.find((d: JsonLdArticle) => d['@type'] && ARTICLE_TYPES.has(d['@type']));
-      }
-      if (!data || !data['@type'] || !ARTICLE_TYPES.has(data['@type'])) continue;
+      const root = JSON.parse(match[1]);
+      // Try every article-like node in the tree; keep the one with articleBody.
+      const candidates = collectArticleCandidates(root);
+      const data = candidates.find(c => c.articleBody) || candidates[0];
+      if (!data) continue;
 
       const articleBody: string | undefined = data.articleBody;
       if (!articleBody) continue;
 
-      // Convert plain text to HTML paragraphs
-      const body = articleBody.includes('<p>')
-        ? articleBody
-        : articleBody
-            .split(/\n\n+/)
-            .filter((p: string) => p.trim())
-            .map((p: string) => `<p>${p.trim()}</p>`)
-            .join('\n');
+      const body = articleBodyToHtml(articleBody);
 
       return {
         title: data.headline || data.name,
