@@ -22,6 +22,11 @@ export interface PollerConfig<T extends BaseRssItem = BaseRssItem> {
   maxPosted?: number;              // default 500
   itemDelay?: number;              // default 3s
 
+  // If the first poll after startup finds this many or more new items, seed
+  // them as posted instead of sending. Protects the channel from a flood
+  // after filter widening or persistence drift. 0 disables (default).
+  coldStartThreshold?: number;
+
   // Hooks — source-specific logic
   parseItems: (xml: string) => T[];
   filterNew: (items: T[], posted: Set<string>) => T[];
@@ -46,10 +51,15 @@ export function createPoller<T extends BaseRssItem>(config: PollerConfig<T>): Po
     jitter = 3 * 60 * 1000,
     maxPosted = 500,
     itemDelay = 3_000,
+    coldStartThreshold = 0,
     parseItems,
     filterNew,
     processItem,
   } = config;
+
+  // Tracks whether we've completed the first pollOnce in this process.
+  // Cold-start dedupe only applies on that first pass.
+  let firstPollDone = false;
 
   const fullPostedPath = join(process.cwd(), postedPath);
 
@@ -99,7 +109,27 @@ export function createPoller<T extends BaseRssItem>(config: PollerConfig<T>): Po
     const allItems = parseItems(xml);
     const newItems = filterNew(allItems, posted);
 
-    if (newItems.length === 0) return;
+    if (newItems.length === 0) {
+      firstPollDone = true;
+      return;
+    }
+
+    // Cold-start dedupe: on the very first poll of this process, a large burst
+    // of "new" items usually means the filter just widened or persistence
+    // drifted — not a real backlog. Seed them as posted and move on.
+    if (!firstPollDone && coldStartThreshold > 0 && newItems.length >= coldStartThreshold) {
+      for (const item of newItems) posted.add(item.guid);
+      await savePostedGuids(posted);
+      console.log(JSON.stringify({
+        event: `${name}_cold_start_seeded`,
+        count: newItems.length,
+        threshold: coldStartThreshold,
+        timestamp: new Date().toISOString(),
+      }));
+      firstPollDone = true;
+      return;
+    }
+    firstPollDone = true;
 
     console.log(JSON.stringify({
       event: `${name}_new_items`,

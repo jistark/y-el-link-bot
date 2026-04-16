@@ -112,6 +112,10 @@ const poller = createPoller<AdprensaRssItem>({
   name: 'adprensa',
   feedUrl: 'https://adprensa.cl/feed/',
   postedPath: 'data/adprensa-posted.json',
+  // The feed widened from "Pauta only" to all categories; on the next
+  // first-poll after this change there will be ~7 backlog items. Seed
+  // them instead of flooding the channel.
+  coldStartThreshold: 5,
   parseItems: parseAdprensaItems,
   filterNew(items, posted) {
     // Accept all categories (Pauta, Economía, Gobierno, Crónica, Política,
