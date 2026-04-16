@@ -144,6 +144,7 @@ interface PendingRequest {
   cancelled: boolean;
   replyToMessageId?: number; // Si el mensaje original era un reply, preservar la relación
   threadId?: number; // Topic/foro de Telegram
+  replyTargetThreadId?: number; // Thread del mensaje al que se respondió (para detectar mismatch)
 }
 
 const pending = new Map<string, PendingRequest>();
@@ -162,6 +163,7 @@ interface PendingPageSelection {
   originalText: string;
   replyToMessageId?: number;
   threadId?: number;
+  replyTargetThreadId?: number;
 }
 
 const pendingPages = new Map<number, PendingPageSelection & { createdAt: number }>();
@@ -1007,6 +1009,7 @@ export function createBot(token: string): Bot {
             originalText: ctx.message.text,
             replyToMessageId: ctx.message.reply_to_message?.message_id,
             threadId: ctx.message.message_thread_id,
+            replyTargetThreadId: ctx.message.reply_to_message?.message_thread_id,
             createdAt: Date.now(),
           });
         } catch (error) {
@@ -1111,6 +1114,7 @@ export function createBot(token: string): Bot {
         cancelled: false,
         replyToMessageId: ctx.message.reply_to_message?.message_id,
         threadId: ctx.message.message_thread_id,
+        replyTargetThreadId: ctx.message.reply_to_message?.message_thread_id,
       });
 
       console.log(JSON.stringify({
@@ -1563,13 +1567,28 @@ export function createBot(token: string): Bot {
           try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
 
           const sameId = sel.replyToMessageId === sel.threadId;
-          const threadOpts = sameId ? {} : (sel.threadId ? { message_thread_id: sel.threadId } : {});
+          const threadMismatch = sel.threadId != null &&
+            sel.replyTargetThreadId !== sel.threadId;
+          const threadOpts = sel.threadId ? { message_thread_id: sel.threadId } : {};
+          const replyOpts = (sameId || threadMismatch)
+            ? {} : { reply_to_message_id: sel.replyToMessageId };
+
+          if (threadMismatch) {
+            console.log(JSON.stringify({
+              event: 'thread_mismatch', action: 'drop_reply_to',
+              currentThread: sel.threadId,
+              replyTargetThread: sel.replyTargetThreadId,
+              replyToMessageId: sel.replyToMessageId,
+              chatId: sel.chatId,
+              timestamp: new Date().toISOString(),
+            }));
+          }
 
           await safeSendMessage(ctx.api, sel.chatId, messageText, {
             ...threadOpts,
+            ...replyOpts,
             parse_mode: 'HTML',
             reply_markup: keyboard,
-            reply_to_message_id: sel.replyToMessageId,
           });
         } else {
           try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
@@ -1684,12 +1703,29 @@ async function processAndReply(
       try { await ctx.api.deleteMessage(req.chatId, req.botMessageId); } catch { /* ok */ }
       try { await ctx.api.deleteMessage(req.chatId, req.originalMessageId); } catch { /* ok */ }
 
-      // sameId: reply target es el header del topic (mensaje directo, no respuesta a otro usuario)
-      // → siempre incluir message_thread_id para que Telegram ubique el topic correcto
-      // → solo incluir reply_to_message_id cuando es una respuesta real (no al header)
+      // Determinar si podemos incluir reply_to_message_id sin que Telegram
+      // mueva el mensaje a un topic distinto:
+      // 1. sameId: el reply target es el header del topic → no incluir reply_to
+      // 2. threadMismatch: el reply target está en otro thread (o no tiene thread,
+      //    p.ej. mensajes de bots editados o de bots terceros como Link Expander)
+      //    → Telegram prioriza el thread del reply target e ignora message_thread_id
       const sameId = req.replyToMessageId === req.threadId;
+      const threadMismatch = req.threadId != null &&
+        req.replyTargetThreadId !== req.threadId;
       const threadOpts = req.threadId ? { message_thread_id: req.threadId } : {};
-      const replyOpts = sameId ? {} : { reply_to_message_id: req.replyToMessageId };
+      const replyOpts = (sameId || threadMismatch)
+        ? {} : { reply_to_message_id: req.replyToMessageId };
+
+      if (threadMismatch) {
+        console.log(JSON.stringify({
+          event: 'thread_mismatch', action: 'drop_reply_to',
+          currentThread: req.threadId,
+          replyTargetThread: req.replyTargetThreadId,
+          replyToMessageId: req.replyToMessageId,
+          chatId: req.chatId,
+          timestamp: new Date().toISOString(),
+        }));
+      }
 
       await safeSendMessage(ctx.api, req.chatId, messageText, {
         ...threadOpts,
@@ -1732,11 +1768,24 @@ async function processAndReply(
 
       try { await ctx.api.deleteMessage(chatId, ctx.msg!.message_id); } catch { /* ok */ }
 
-      // sameId: reply target es el header del topic (mensaje directo, no respuesta real)
-      // → siempre incluir message_thread_id, solo incluir reply_to cuando es respuesta real
       const sameId = replyToId === threadId;
+      const replyTargetThreadId = ctx.message?.reply_to_message?.message_thread_id;
+      const threadMismatch = threadId != null &&
+        replyTargetThreadId !== threadId;
       const threadOpts = threadId ? { message_thread_id: threadId } : {};
-      const replyOpts = sameId ? {} : { reply_to_message_id: replyToId };
+      const replyOpts = (sameId || threadMismatch)
+        ? {} : { reply_to_message_id: replyToId };
+
+      if (threadMismatch) {
+        console.log(JSON.stringify({
+          event: 'thread_mismatch', action: 'drop_reply_to',
+          currentThread: threadId,
+          replyTargetThread: replyTargetThreadId,
+          replyToMessageId: replyToId,
+          chatId,
+          timestamp: new Date().toISOString(),
+        }));
+      }
 
       await safeSendMessage(ctx.api, chatId, messageText, {
         ...threadOpts,
