@@ -29,11 +29,8 @@ const EXTRA_ALLOWED = new Set([
   'emol.com',
 ]);
 
-// When true, URLs outside the allowlist (custom extractor, bypass recipe,
-// or EXTRA_ALLOWED) are silently dropped. When false (default), they still
-// go through but emit a `would_reject` log so the allowlist can be tuned
-// from real traffic before enforcement.
-const STRICT_ALLOWLIST = process.env.STRICT_ALLOWLIST === 'true';
+// URLs outside the allowlist (custom extractor, bypass-paywalls recipe,
+// or EXTRA_ALLOWED) are silently dropped. Only curated sources get extracted.
 
 function isPrivateOrReservedHost(hostname: string): boolean {
   // Loopback
@@ -73,16 +70,8 @@ function isExtractableUrl(url: string): boolean {
     // Must have a path beyond "/" (skip homepages)
     if (u.pathname === '/' || u.pathname === '') return false;
 
-    const { allowed, reason } = isOnAllowlist(url);
-    if (!allowed) {
-      console.log(JSON.stringify({
-        event: STRICT_ALLOWLIST ? 'url_rejected' : 'would_reject',
-        url,
-        reason,
-        timestamp: new Date().toISOString(),
-      }));
-      if (STRICT_ALLOWLIST) return false;
-    }
+    const { allowed } = isOnAllowlist(url);
+    if (!allowed) return false;
     return true;
   } catch {
     return false;

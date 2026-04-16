@@ -9,6 +9,7 @@ import * as cnnchile from './cnnchile.js';
 import * as df from './df.js';
 import * as elfiltrador from './elfiltrador.js';
 import * as elmercurio from './elmercurio.js';
+import * as emol from './emol.js';
 import * as elpais from './elpais.js';
 import * as exante from './exante.js';
 import * as ft from './ft.js';
@@ -56,6 +57,7 @@ const URL_PATTERNS = {
   tvn: /^(?:www\.)?(?:tvn|24horas)\.cl$/,
   mega: /^(?:www\.)?(?:meganoticias|mega)\.cl$/,
   chilevision: /(?:^|\.)?chilevision\.cl$/,
+  emol: /emol\.com/,
   ojoalatele: /(?:^|\.)?ojoalatele\.com$/,
   lahora: /(?:^|\.)?lahora\.cl$/,
   // substack and beehiiv deprecated - extraction unreliable
@@ -157,6 +159,9 @@ export async function extractArticle(url: string): Promise<Article> {
 
     case 'chilevision':
       return chilevision.extract(url);
+
+    case 'emol':
+      return emol.extract(url);
 
     case 'ojoalatele':
       return ojoalatele.extract(url);
