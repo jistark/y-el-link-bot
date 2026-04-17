@@ -20,6 +20,14 @@ const SKIP_DOMAINS = new Set([
   'ddinstagram.com', 'rxddit.com', 'vxreddit.com',
 ]);
 
+// Bots that expand X/Twitter links into card previews. We selectively
+// process their messages: pull fxtwitter/fixupx URLs out of the body,
+// fetch them, and look for embedded article URLs to extract. Match by
+// username (lowercase, no @).
+const LINK_EXPANDER_BOTS = new Set([
+  'twitterlinkexpanderbot',
+]);
+
 // Domains without a bypass-paywalls recipe that we've still seen succeed
 // via the generic extractor. Reviewed via `would_reject` logs — add here
 // only after confirming the generic extractor produces useful output.
@@ -273,6 +281,137 @@ function deAmpUrl(url: string): string {
     return deamped;
   }
   return url;
+}
+
+// --- Link Expander helpers ---------------------------------------------------
+
+// Hosts inside FxTwitter responses that don't lead to article URLs.
+const FXTWITTER_NOISE_HOSTS = new Set([
+  'fxtwitter.com', 'fixupx.com', 'vxtwitter.com', 'fixvx.com',
+  'twitter.com', 'x.com', 'mobile.twitter.com',
+  'twimg.com', 'pbs.twimg.com', 'video.twimg.com',
+  't.co', // FxTwitter usually expands these in the response
+]);
+
+function isFxTwitterUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return /^(?:[\w-]+\.)?(?:fxtwitter|fixupx|vxtwitter|fixvx)\.com$/.test(host);
+  } catch { return false; }
+}
+
+// Fetch an FxTwitter (or sibling) URL and pull out the embedded article
+// URLs that the source tweet was pointing to. Filters Twitter/CDN noise.
+async function extractUrlsFromFxTwitter(fxUrl: string): Promise<string[]> {
+  let html: string;
+  try {
+    html = await fetchBypass(fxUrl);
+  } catch (err) {
+    console.error(JSON.stringify({
+      event: 'fxtwitter_fetch_error',
+      url: fxUrl,
+      error: err instanceof Error ? err.message : String(err),
+      timestamp: new Date().toISOString(),
+    }));
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of extractUrls(html)) {
+    if (seen.has(raw)) continue;
+    seen.add(raw);
+    try {
+      const host = new URL(raw).hostname.toLowerCase().replace(/^www\./, '');
+      if (FXTWITTER_NOISE_HOSTS.has(host)) continue;
+      let noise = false;
+      for (const n of FXTWITTER_NOISE_HOSTS) {
+        if (host.endsWith('.' + n)) { noise = true; break; }
+      }
+      if (noise) continue;
+      out.push(raw);
+    } catch { /* skip malformed */ }
+  }
+  return out;
+}
+
+// Handle messages from Link Expander-style bots: scan for fxtwitter URLs,
+// resolve their embedded article URLs, and post a Telegraph reply per
+// match. Does NOT delete the bot's original message.
+async function handleLinkExpanderMessage(ctx: Context): Promise<void> {
+  const text = ctx.message?.text;
+  if (!text || !ctx.chat) return;
+
+  const fxUrls = extractUrls(text).filter(isFxTwitterUrl);
+  if (fxUrls.length === 0) return;
+
+  for (const fxUrl of fxUrls) {
+    const embedded = await extractUrlsFromFxTwitter(fxUrl);
+
+    let articleUrl: string | null = null;
+    for (const candidate of embedded) {
+      const cleaned = deAmpUrl(candidate);
+      if (detectSource(cleaned) || isExtractableUrl(cleaned)) {
+        articleUrl = cleaned;
+        break;
+      }
+    }
+    if (!articleUrl) continue;
+
+    let result: CreatePageResult;
+    const cached = cache.get(articleUrl);
+    if (cached && cached.expires > Date.now()) {
+      result = cached.result;
+    } else {
+      try {
+        const article = await extractArticle(articleUrl);
+        article.url = articleUrl;
+        result = await createPage(article);
+        cache.set(articleUrl, { result, expires: Date.now() + TTL });
+        pathToUrl.set(result.path, articleUrl);
+      } catch (err) {
+        console.error(JSON.stringify({
+          event: 'link_expander_extract_error',
+          fxUrl, articleUrl,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        }));
+        continue;
+      }
+    }
+
+    console.log(JSON.stringify({
+      event: 'link_expander_processed',
+      botUsername: ctx.message?.from?.username,
+      fxUrl, articleUrl,
+      telegraphUrl: result.url,
+      threadId: ctx.message?.message_thread_id,
+      chatId: ctx.chat.id,
+      timestamp: new Date().toISOString(),
+    }));
+
+    // Skip reply_to_message_id — target is a bot, which triggers Telegram's
+    // topic-misplacement bug. Rely on message_thread_id to keep the reply
+    // in the same topic. The visual reply chain is sacrificed; the
+    // contextual proximity (same topic, posted right after) is enough.
+    const threadOpts = ctx.message?.message_thread_id
+      ? { message_thread_id: ctx.message.message_thread_id }
+      : {};
+
+    try {
+      await safeSendMessage(ctx.api, ctx.chat.id, `📰 ${result.url}`, {
+        ...threadOpts,
+        link_preview_options: { is_disabled: false },
+      });
+    } catch (err) {
+      console.error(JSON.stringify({
+        event: 'link_expander_send_error',
+        articleUrl, telegraphUrl: result.url,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  }
 }
 
 function getUserMention(ctx: Context): string {
@@ -956,8 +1095,14 @@ export function createBot(token: string): Bot {
 
   // Handler para mensajes con URLs
   bot.on('message:text', async (ctx) => {
-    // Ignorar mensajes de otros bots (linkexpander, etc.)
-    if (ctx.message.from?.is_bot) return;
+    // Bots: only process Link Expander-style X/Twitter expanders.
+    if (ctx.message.from?.is_bot) {
+      const username = ctx.message.from.username?.toLowerCase();
+      if (username && LINK_EXPANDER_BOTS.has(username)) {
+        await handleLinkExpanderMessage(ctx);
+      }
+      return;
+    }
 
     const rawUrls = extractUrls(ctx.message.text);
 
