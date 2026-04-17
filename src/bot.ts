@@ -112,6 +112,7 @@ import {
   startFotoportadasPoller, fetchLatestFotoportadas, fetchFotoportadasFeed,
   parseFotoportadasItems, extractFotoportadaImages, downloadPhotos,
 } from './services/fotoportadas-poller.js';
+import { createRssRegenKeyboard } from './services/rss-shared.js';
 import { addRegistryEntry, findByGuidPrefix, updateRegistryEntry } from './services/registry.js';
 import { readFile, writeFile } from 'fs/promises';
 
@@ -1586,7 +1587,7 @@ export function createBot(token: string): Bot {
           updateRegistryEntry(entry.guid, { telegraphPath: result.path }).catch(() => {});
 
           // Edit existing message with new Telegraph URL + regen keyboard
-          const regenKeyboard = new InlineKeyboard().text('\u{1F504}', `regen_rss:adprensa:${entry.guid.slice(0, 20)}`);
+          const regenKeyboard = createRssRegenKeyboard('adprensa', entry.guid);
           if (chatId && messageId) {
             await ctx.api.editMessageText(chatId, messageId, result.url, {
               reply_markup: regenKeyboard,
@@ -1618,7 +1619,7 @@ export function createBot(token: string): Bot {
           const media = extractMediaLinks(item.contentEncoded);
           const caption = formatCaption(item, media);
           const photos = await getPhotos(media);
-          const regenKeyboard = new InlineKeyboard().text('\u{1F504}', `regen_rss:senal:${entry.guid.slice(0, 20)}`);
+          const regenKeyboard = createRssRegenKeyboard('senal', entry.guid);
 
           if (chatId) {
             // Try to delete the old message (may fail for media groups)
@@ -1680,7 +1681,7 @@ export function createBot(token: string): Bot {
           const urls = extractFotoportadaImages(item.contentEncoded);
           const photos = await downloadPhotos(urls);
           const caption = `\u{1F4F0} <b>${escapeHtml(item.title)}</b>`;
-          const regenKeyboard = new InlineKeyboard().text('\u{1F504}', `regen_rss:fotoportadas:${entry.guid.slice(0, 20)}`);
+          const regenKeyboard = createRssRegenKeyboard('fotoportadas', entry.guid);
 
           if (chatId) {
             if (messageId) {

@@ -1,4 +1,3 @@
-import { InlineKeyboard } from 'grammy';
 import type { Api } from 'grammy';
 import type { Article } from '../types.js';
 import { createPage, deletePage } from '../formatters/telegraph.js';
@@ -6,6 +5,7 @@ import { decodeEntities, sendWithRetry } from '../utils/shared.js';
 import { addRegistryEntry } from './registry.js';
 import { createPoller } from './poller-base.js';
 import type { BaseRssItem } from './poller-base.js';
+import { createRssRegenKeyboard } from './rss-shared.js';
 
 // --- Types ---
 
@@ -51,14 +51,6 @@ export function parseAdprensaItems(xml: string): AdprensaRssItem[] {
   }
 
   return items;
-}
-
-// --- Regen keyboard ---
-
-function createRssRegenKeyboard(source: string, guid: string): InlineKeyboard {
-  // Use first 20 chars of guid to stay under 64-byte Telegram callback_data limit
-  const guidHash = guid.slice(0, 20);
-  return new InlineKeyboard().text('\u{1F504}', `regen_rss:${source}:${guidHash}`);
 }
 
 // --- Content preprocessing ---

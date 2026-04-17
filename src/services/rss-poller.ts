@@ -1,9 +1,10 @@
-import { InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
+import { InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
 import { randomUA, decodeEntities, sendWithRetry } from '../utils/shared.js';
 import { addRegistryEntry } from './registry.js';
 import { createPoller } from './poller-base.js';
 import type { BaseRssItem } from './poller-base.js';
+import { createRssRegenKeyboard } from './rss-shared.js';
 
 // --- Types ---
 
@@ -76,13 +77,6 @@ async function getWetransferFileUrl(transferId: string, securityHash: string, pa
   if (!res.ok) return null;
   const data = await res.json() as any;
   return data.direct_link || null;
-}
-
-// --- Regen keyboard ---
-
-function createRssRegenKeyboard(source: string, guid: string): InlineKeyboard {
-  const guidHash = guid.slice(0, 20);
-  return new InlineKeyboard().text('\u{1F504}', `regen_rss:${source}:${guidHash}`);
 }
 
 // --- RSS Parsing ---
