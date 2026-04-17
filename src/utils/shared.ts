@@ -73,6 +73,9 @@ const HTML_ENTITIES: Record<string, string> = {
 };
 
 export function decodeEntities(text: string): string {
+  // Extractors occasionally pass non-string values (e.g. Bloomberg's
+  // story.headline can arrive as an object) — coerce instead of crashing.
+  if (typeof text !== 'string') return text == null ? '' : String(text);
   let decoded = text;
   for (const [entity, char] of Object.entries(HTML_ENTITIES)) {
     decoded = decoded.replaceAll(entity, char);

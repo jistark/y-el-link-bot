@@ -10,7 +10,9 @@ const PROJECT_ROOT = resolve(import.meta.dir, '../..');
 const SCRIPT_PATH = resolve(PROJECT_ROOT, 'scripts/fetch_bypass.py');
 const VENV_PYTHON = resolve(PROJECT_ROOT, '.venv/bin/python3');
 const PYTHON_CMD = process.env.PYTHON_CMD || (existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python3');
-const TIMEOUT_MS = 25_000;
+// Must exceed Python's worst-case path: proxy (30s) + direct retry (40s) +
+// webcache (20s) = 90s. Render mode (60s proxy) also fits with margin.
+const TIMEOUT_MS = 90_000;
 
 export type FetchMode = 'chrome' | 'googlebot' | 'inspectiontool';
 
