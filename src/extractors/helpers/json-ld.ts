@@ -1,6 +1,7 @@
 export interface JsonLdArticle {
   '@type'?: string;
   headline?: string;
+  name?: string;
   articleBody?: string;
   description?: string;
   author?: { name?: string } | { name?: string }[] | string;

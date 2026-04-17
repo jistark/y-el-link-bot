@@ -52,8 +52,9 @@ async function fetchWithRecipe(url: string): Promise<string> {
       signal: AbortSignal.timeout(15_000),
     });
     if (res.ok) return await res.text();
-    // If 403/503, fall through to curl_cffi
-    if (res.status !== 403 && res.status !== 503) {
+    // On Cloudflare-style blocks (403, 429, 503, 52x), fall through to curl_cffi
+    if (res.status !== 403 && res.status !== 429 && res.status !== 503
+      && !(res.status >= 520 && res.status <= 530)) {
       throw new Error(`HTTP ${res.status}`);
     }
   } catch (err: unknown) {

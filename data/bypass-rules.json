@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "compiled": "2026-04-13T00:35:34.807Z",
-    "count": 933,
+    "compiled": "2026-04-17T19:30:23.104Z",
+    "count": 932,
     "source": "bypass-paywalls-chrome-clean sites.js"
   },
   "60millions-mag.com": {
@@ -762,6 +762,9 @@
     "allow_cookies": true
   },
   "foxnews.com": {
+    "allow_cookies": true
+  },
+  "franc-tireur.fr": {
     "allow_cookies": true
   },
   "faz.net": {
@@ -1962,18 +1965,11 @@
     "allow_cookies": true
   },
   "philosophynow.org": {},
-  "piratewires.com": {
-    "useragent_custom": "Mozilla/5.0 (compatible; Twitterbot/1.0)",
-    "allow_cookies": true
-  },
   "post-gazette.com": {},
   "politicaexterior.com": {
     "allow_cookies": true
   },
   "politico.com": {
-    "allow_cookies": true
-  },
-  "politis.fr": {
     "allow_cookies": true
   },
   "polityka.pl": {

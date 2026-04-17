@@ -110,8 +110,8 @@ def main():
         if content is not None:
             sys.stdout.buffer.write(content)
             return
-        if attempt == 0 and status == 403:
-            time.sleep(1)
+        if attempt == 0 and status in (403, 429):
+            time.sleep(2)
 
     # Strategy 2: Google Webcache fallback
     content, status = fetch_webcache(url, headers)

@@ -38,8 +38,34 @@ function extractBodyFromHtml(html: string): string | null {
 }
 
 async function fetchArticleHtml(url: string): Promise<string> {
-  // FT uses Cloudflare Bot Management — requires TLS impersonation via curl_cffi
-  return fetchBypass(url, 'https://www.google.com/');
+  // Strip tracking/syndication query params (e.g. ?syn-25a6b1a6=1) —
+  // they don't affect content but can skew CDN rate-limit buckets.
+  const cleanUrl = url.replace(/\?.*$/, '');
+
+  // Strategy 1: Bun's native fetch with Google referer.
+  // Bun's TLS fingerprint (BoringSSL) is far less targeted by Cloudflare
+  // than curl_cffi's Chrome impersonation, avoiding datacenter-IP 429s.
+  try {
+    const res = await fetch(cleanUrl, {
+      headers: {
+        Referer: 'https://www.google.com/',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      redirect: 'follow',
+    });
+    if (res.ok) {
+      const html = await res.text();
+      if (html.includes('articleBody') || html.includes('article__content')) {
+        return html;
+      }
+    }
+  } catch {
+    // Fall through to curl_cffi
+  }
+
+  // Strategy 2: curl_cffi Chrome TLS impersonation (fallback)
+  return fetchBypass(cleanUrl, 'https://www.google.com/');
 }
 
 export async function extract(url: string): Promise<Article> {
