@@ -85,7 +85,6 @@ import {
   getMatchesForTeam, getMatchesAtTime, getCountdown, getAllTeams,
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
-import { fetchBypass } from './extractors/fetch-bypass.js';
 import {
   startRssPoller, fetchLatestSenal, fetchSenalFeed,
   parseSenalItems, extractMediaLinks, getPhotos, formatCaption,
@@ -145,6 +144,7 @@ interface PendingRequest {
   replyToMessageId?: number; // Si el mensaje original era un reply, preservar la relación
   threadId?: number; // Topic/foro de Telegram
   replyTargetThreadId?: number; // Thread del mensaje al que se respondió (para detectar mismatch)
+  replyTargetIsBot?: boolean; // El target del reply es un bot (ej. Link Expander) — fuerza drop de reply_to
 }
 
 const pending = new Map<string, PendingRequest>();
@@ -164,6 +164,7 @@ interface PendingPageSelection {
   replyToMessageId?: number;
   threadId?: number;
   replyTargetThreadId?: number;
+  replyTargetIsBot?: boolean;
 }
 
 const pendingPages = new Map<number, PendingPageSelection & { createdAt: number }>();
@@ -427,27 +428,23 @@ async function fetchDollarPrices(): Promise<{
   live: LiveQuote | null;
   quotes: { source: typeof DOLLAR_SOURCES[number]; quote: DollarQuote | null }[];
 }> {
-  // Fetch HTML de dolar.cl - los precios están embebidos como React Query dehydrated state
-  // dolar.cl usa Vercel con bot protection — Bun a veces recibe 200 con HTML vacío
-  // de data (challenge page). Intentar directo, validar contenido, fallback a curl_cffi.
-  let html: string;
-  try {
-    const response = await fetch('https://dolar.cl/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'none',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    html = await response.text();
-    // Verificar que el HTML tiene datos reales (no challenge page)
-    if (!html.includes('"buy"')) throw new Error('dolar.cl devolvió challenge page');
-  } catch {
-    html = await fetchBypass('https://dolar.cl/');
-  }
+  // Fetch HTML de dolar.cl - los precios están embebidos como React Query dehydrated state.
+  // dolar.cl usa Vercel con bot protection — desde datacenter IPs siempre devuelve
+  // challenge page. fetchBypass/proxy agrega 30s+ de latencia que excede el webhook
+  // timeout de Grammy (10s), causando reintentos y mensajes duplicados.
+  // Si falla, dejamos que el caller caiga a mindicador.cl (rápido y fiable).
+  const response = await fetch('https://dolar.cl/', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const html = await response.text();
+  if (!html.includes('"buy"')) throw new Error('dolar.cl devolvió challenge page');
 
   // Extraer live quote del dehydrated state
   let live: LiveQuote | null = null;
@@ -745,8 +742,10 @@ export function createBot(token: string): Bot {
       const result = await getHoroscopo(signo, userName);
       await ctx.reply(result, {
         parse_mode: 'HTML',
-        reply_to_message_id: ctx.message!.message_id,
-        allow_sending_without_reply: true,
+        reply_parameters: {
+          message_id: ctx.message!.message_id,
+          allow_sending_without_reply: true,
+        },
       });
     } catch (error) {
       console.error(JSON.stringify({
@@ -777,26 +776,26 @@ export function createBot(token: string): Bot {
     if ((!arg && !hadInput) || arg === 'hoy') {
       const countdown = getCountdown();
       if (countdown) {
-        await ctx.reply(countdown, { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
+        await ctx.reply(countdown, { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } });
         return;
       }
       const today = getChileDate();
       const matches = getMatchesForDate(today);
-      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
+      await ctx.reply(formatMatchesForDate(matches, today, 'Hoy'), { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } });
       return;
     }
 
     if (arg === 'mañana' || arg === 'manana') {
       const tomorrow = getChileDate(1);
       const matches = getMatchesForDate(tomorrow);
-      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
+      await ctx.reply(formatMatchesForDate(matches, tomorrow, 'Mañana'), { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } });
       return;
     }
 
     if (arg === 'semana') {
       const today = getChileDate();
       const matches = getMatchesForWeek(today);
-      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
+      await ctx.reply(formatMatchesForWeek(matches), { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } });
       return;
     }
 
@@ -805,14 +804,14 @@ export function createBot(token: string): Bot {
       const teamList = teams.map(t => `• ${t}`).join('\n');
       await ctx.reply(
         `\u26BD <b>Mundial 2026 — Equipos participantes</b>\n\n${teamList}`,
-        { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true }
+        { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } }
       );
       return;
     }
 
     // Easter eggs
     const argNorm = arg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const replyOpts = { reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true };
+    const replyOpts = { reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } };
 
     // Chile no clasificó
     if (argNorm === 'chile' || argNorm === 'la roja') {
@@ -862,7 +861,7 @@ export function createBot(token: string): Bot {
     // Buscar por equipo
     const result = getMatchesForTeam(arg);
     if (result) {
-      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true });
+      await ctx.reply(formatMatchesForTeam(result.team, result.matches), { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } });
       return;
     }
 
@@ -871,7 +870,7 @@ export function createBot(token: string): Bot {
     await ctx.reply(
       `\u26BD\u274C <b>${escapeHtml(displayArg)}</b> NO va al mundial 2026\n\n` +
       'Usa /mundial equipos para ver quiénes sí van',
-      { parse_mode: 'HTML', reply_to_message_id: ctx.message!.message_id, allow_sending_without_reply: true }
+      { parse_mode: 'HTML', reply_parameters: { message_id: ctx.message!.message_id, allow_sending_without_reply: true } }
     );
   });
 
@@ -1010,6 +1009,7 @@ export function createBot(token: string): Bot {
             replyToMessageId: ctx.message.reply_to_message?.message_id,
             threadId: ctx.message.message_thread_id,
             replyTargetThreadId: ctx.message.reply_to_message?.message_thread_id,
+            replyTargetIsBot: ctx.message.reply_to_message?.from?.is_bot ?? false,
             createdAt: Date.now(),
           });
         } catch (error) {
@@ -1115,6 +1115,7 @@ export function createBot(token: string): Bot {
         replyToMessageId: ctx.message.reply_to_message?.message_id,
         threadId: ctx.message.message_thread_id,
         replyTargetThreadId: ctx.message.reply_to_message?.message_thread_id,
+        replyTargetIsBot: ctx.message.reply_to_message?.from?.is_bot ?? false,
       });
 
       console.log(JSON.stringify({
@@ -1569,15 +1570,19 @@ export function createBot(token: string): Bot {
           const sameId = sel.replyToMessageId === sel.threadId;
           const threadMismatch = sel.threadId != null &&
             sel.replyTargetThreadId !== sel.threadId;
+          const targetIsBot = sel.replyTargetIsBot === true;
+          const dropReplyTo = sameId || threadMismatch || targetIsBot;
           const threadOpts = sel.threadId ? { message_thread_id: sel.threadId } : {};
-          const replyOpts = (sameId || threadMismatch)
+          const replyOpts = dropReplyTo
             ? {} : { reply_to_message_id: sel.replyToMessageId };
 
-          if (threadMismatch) {
+          if (threadMismatch || targetIsBot) {
             console.log(JSON.stringify({
               event: 'thread_mismatch', action: 'drop_reply_to',
+              reason: targetIsBot ? 'target_is_bot' : 'thread_mismatch',
               currentThread: sel.threadId,
               replyTargetThread: sel.replyTargetThreadId,
+              replyTargetIsBot: sel.replyTargetIsBot,
               replyToMessageId: sel.replyToMessageId,
               chatId: sel.chatId,
               timestamp: new Date().toISOString(),
@@ -1589,6 +1594,7 @@ export function createBot(token: string): Bot {
             ...replyOpts,
             parse_mode: 'HTML',
             reply_markup: keyboard,
+            link_preview_options: { is_disabled: false },
           });
         } else {
           try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
@@ -1603,6 +1609,7 @@ export function createBot(token: string): Bot {
               message_thread_id: sel.threadId,
               parse_mode: 'HTML',
               reply_markup: keyboard,
+              link_preview_options: { is_disabled: false },
             });
           }
         }
@@ -1706,21 +1713,27 @@ async function processAndReply(
       // Determinar si podemos incluir reply_to_message_id sin que Telegram
       // mueva el mensaje a un topic distinto:
       // 1. sameId: el reply target es el header del topic → no incluir reply_to
-      // 2. threadMismatch: el reply target está en otro thread (o no tiene thread,
-      //    p.ej. mensajes de bots editados o de bots terceros como Link Expander)
-      //    → Telegram prioriza el thread del reply target e ignora message_thread_id
+      // 2. threadMismatch: el reply target está en otro thread → drop reply_to
+      // 3. targetIsBot: replying to a bot's message (Link Expander, etc.)
+      //    Telegram silently moves replies to bot messages to General/main
+      //    topic regardless of message_thread_id. Drop reply_to to keep
+      //    correct topic placement; sacrifices the visual reply chain.
       const sameId = req.replyToMessageId === req.threadId;
       const threadMismatch = req.threadId != null &&
         req.replyTargetThreadId !== req.threadId;
+      const targetIsBot = req.replyTargetIsBot === true;
+      const dropReplyTo = sameId || threadMismatch || targetIsBot;
       const threadOpts = req.threadId ? { message_thread_id: req.threadId } : {};
-      const replyOpts = (sameId || threadMismatch)
+      const replyOpts = dropReplyTo
         ? {} : { reply_to_message_id: req.replyToMessageId };
 
-      if (threadMismatch) {
+      if (threadMismatch || targetIsBot) {
         console.log(JSON.stringify({
           event: 'thread_mismatch', action: 'drop_reply_to',
+          reason: targetIsBot ? 'target_is_bot' : 'thread_mismatch',
           currentThread: req.threadId,
           replyTargetThread: req.replyTargetThreadId,
+          replyTargetIsBot: req.replyTargetIsBot,
           replyToMessageId: req.replyToMessageId,
           chatId: req.chatId,
           timestamp: new Date().toISOString(),
@@ -1732,6 +1745,7 @@ async function processAndReply(
         ...replyOpts,
         parse_mode: 'HTML',
         reply_markup: keyboard,
+        link_preview_options: { is_disabled: false },
       });
     } else {
       // Mensaje directo con link — borrar original, editar "⏳ Procesando" con resultado
@@ -1747,6 +1761,7 @@ async function processAndReply(
           message_thread_id: req.threadId,
           parse_mode: 'HTML',
           reply_markup: keyboard,
+          link_preview_options: { is_disabled: false },
         });
       }
     }
@@ -1770,17 +1785,21 @@ async function processAndReply(
 
       const sameId = replyToId === threadId;
       const replyTargetThreadId = ctx.message?.reply_to_message?.message_thread_id;
+      const replyTargetIsBot = ctx.message?.reply_to_message?.from?.is_bot === true;
       const threadMismatch = threadId != null &&
         replyTargetThreadId !== threadId;
+      const dropReplyTo = sameId || threadMismatch || replyTargetIsBot;
       const threadOpts = threadId ? { message_thread_id: threadId } : {};
-      const replyOpts = (sameId || threadMismatch)
+      const replyOpts = dropReplyTo
         ? {} : { reply_to_message_id: replyToId };
 
-      if (threadMismatch) {
+      if (threadMismatch || replyTargetIsBot) {
         console.log(JSON.stringify({
           event: 'thread_mismatch', action: 'drop_reply_to',
+          reason: replyTargetIsBot ? 'target_is_bot' : 'thread_mismatch',
           currentThread: threadId,
           replyTargetThread: replyTargetThreadId,
+          replyTargetIsBot,
           replyToMessageId: replyToId,
           chatId,
           timestamp: new Date().toISOString(),
@@ -1792,6 +1811,7 @@ async function processAndReply(
         ...replyOpts,
         parse_mode: 'HTML',
         reply_markup: keyboard,
+        link_preview_options: { is_disabled: false },
       });
     } else {
       // Direct message (not a reply) — middleware handles thread injection via ctx.reply()

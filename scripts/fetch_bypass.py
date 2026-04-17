@@ -32,7 +32,7 @@ PROXY_URL = os.environ.get('PROXY_URL')
 # protection). Override with PROXY_DOMAINS env var (comma-separated).
 DEFAULT_PROXY_DOMAINS = [
     'ft.com', 'bloomberg.com', 'nytimes.com', 'theatlantic.com',
-    'washingtonpost.com', 'wired.com', 'dolar.cl',
+    'washingtonpost.com', 'wired.com',
 ]
 PROXY_DOMAINS = (
     [d.strip() for d in os.environ['PROXY_DOMAINS'].split(',') if d.strip()]
