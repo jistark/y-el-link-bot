@@ -52,8 +52,14 @@ async function fetchWithRecipe(url: string): Promise<string> {
       signal: AbortSignal.timeout(15_000),
     });
     if (res.ok) return await res.text();
-    // On Cloudflare-style blocks (403, 429, 503, 52x), fall through to curl_cffi
-    if (res.status !== 403 && res.status !== 429 && res.status !== 503
+    // On bot-protection blocks, fall through to curl_cffi / Web Unblocker.
+    // 401: Reuters (Cloudflare configured to challenge with 401 from datacenter IPs)
+    // 402: paywall-via-status (rare but seen)
+    // 403/429: Cloudflare / generic block / rate limit
+    // 451: geo-blocking (proxy from a friendly country may unblock)
+    // 503/52x: Cloudflare service-unavailable / origin issues
+    const PROXY_FALLBACK_STATUSES = new Set([401, 402, 403, 429, 451, 503]);
+    if (!PROXY_FALLBACK_STATUSES.has(res.status)
       && !(res.status >= 520 && res.status <= 530)) {
       throw new Error(`HTTP ${res.status}`);
     }
