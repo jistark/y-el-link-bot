@@ -48,6 +48,12 @@ JS_DOMAINS = (
     if os.environ.get('PROXY_JS_DOMAINS') else DEFAULT_JS_DOMAINS
 )
 
+# Per-domain country routing. dolar.cl is a Chilean finance site that may
+# geo-filter or rate-limit foreign IPs harder than local ones.
+DOMAIN_COUNTRY: dict[str, str] = {
+    'dolar.cl': 'cl',
+}
+
 # Full browser-like headers to pass datacenter IP reputation checks
 BROWSER_HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -77,10 +83,19 @@ def needs_js(url):
     return any(domain == d or domain.endswith('.' + d) for d in JS_DOMAINS)
 
 
-def proxy_url_with_render():
-    """Append _render-1 to the password segment of PROXY_URL for JS rendering.
+def get_country(url):
+    """Return the country code for a domain, or None."""
+    domain = (urlparse(url).hostname or '').lower()
+    for d, cc in DOMAIN_COUNTRY.items():
+        if domain == d or domain.endswith('.' + d):
+            return cc
+    return None
 
-    http://USER:PASS@host:port  →  http://USER:PASS_render-1@host:port
+
+def build_proxy_url(render=False, country=None):
+    """Build proxy URL with optional render and country suffixes.
+
+    http://USER:PASS@host:port  →  http://USER:PASS_render-1_country-cl@host:port
     """
     if not PROXY_URL:
         return None
@@ -88,9 +103,14 @@ def proxy_url_with_render():
         scheme, rest = PROXY_URL.split('://', 1)
         auth, host = rest.rsplit('@', 1)
         user, pwd = auth.split(':', 1)
-        return f"{scheme}://{user}:{pwd}_render-1@{host}"
+        suffix = ''
+        if render:
+            suffix += '_render-1'
+        if country:
+            suffix += f'_country-{country}'
+        return f"{scheme}://{user}:{pwd}{suffix}@{host}"
     except ValueError:
-        return PROXY_URL  # malformed — let the request fail naturally
+        return PROXY_URL
 
 
 def log_proxy(domain, bytes_used, status, render=False):
@@ -104,13 +124,13 @@ def log_proxy(domain, bytes_used, status, render=False):
     }), file=sys.stderr)
 
 
-def fetch_direct(url, headers, use_proxy=False, render=False):
+def fetch_direct(url, headers, use_proxy=False, render=False, country=None):
     """Fetch URL with TLS impersonation; route through Web Unblocker if requested."""
     proxies = None
     timeout = 20
     verify = True
     if use_proxy and PROXY_URL:
-        purl = proxy_url_with_render() if render else PROXY_URL
+        purl = build_proxy_url(render=render, country=country)
         proxies = {"http": purl, "https": purl}
         timeout = 60 if render else 30  # residential adds latency; rendering more
         verify = False                  # Web Unblocker terminates TLS via MITM
@@ -206,10 +226,11 @@ def main():
 
     use_proxy = bool(PROXY_URL) and needs_proxy(url)
     render = needs_js(url)
+    country = get_country(url) if use_proxy else None
 
     if use_proxy:
         # Web Unblocker first — direct fetch from Render IP would fail anyway.
-        content, status = fetch_direct(url, headers, use_proxy=True, render=render)
+        content, status = fetch_direct(url, headers, use_proxy=True, render=render, country=country)
         if content is not None:
             sys.stdout.buffer.write(content)
             return
