@@ -219,9 +219,11 @@ function htmlToNodes(html: string): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
 
   // Paso 0: Limpiar tags HTML
-  // Normalizar <a> tags: quitar atributos extra (type, id, class, etc.) dejando solo href
-  html = html.replace(/<a\s+[^>]*?href="([^"]*)"[^>]*>/gi, '<a href="$1">');
-  html = html.replace(/<a\s+[^>]*?href='([^']*)'[^>]*>/gi, '<a href="$1">');
+  // Normalizar <a> tags: quitar atributos extra (type, id, class, etc.) dejando
+  // solo href. Decode entities in the href so URLs with `&amp;` in query
+  // strings render as proper `&` instead of leaking the entity into the link.
+  html = html.replace(/<a\s+[^>]*?href="([^"]*)"[^>]*>/gi, (_, href) => `<a href="${decodeEntities(href)}">`);
+  html = html.replace(/<a\s+[^>]*?href='([^']*)'[^>]*>/gi, (_, href) => `<a href="${decodeEntities(href)}">`);
   // Eliminar tags desconocidos (ej: <capitals>, <subhead>)
   html = stripUnknownTags(html);
 

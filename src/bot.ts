@@ -108,7 +108,10 @@ import {
   startAdprensaPoller, fetchLatestPauta, fetchAdprensaFeed,
   parseAdprensaItems, preprocessPautaContent, isContactList,
 } from './services/adprensa-poller.js';
-import { startFotoportadasPoller, fetchLatestFotoportadas } from './services/fotoportadas-poller.js';
+import {
+  startFotoportadasPoller, fetchLatestFotoportadas, fetchFotoportadasFeed,
+  parseFotoportadasItems, extractFotoportadaImages, downloadPhotos,
+} from './services/fotoportadas-poller.js';
 import { addRegistryEntry, findByGuidPrefix, updateRegistryEntry } from './services/registry.js';
 import { readFile, writeFile } from 'fs/promises';
 
@@ -1658,6 +1661,60 @@ export function createBot(token: string): Bot {
           console.log(JSON.stringify({
             event: 'regen_rss_success',
             source: 'senal',
+            guid: entry.guid,
+            timestamp: new Date().toISOString(),
+          }));
+        } else if (source === 'fotoportadas') {
+          // Fotoportadas: re-fetch feed, find item, re-download photos, replace message
+          const xml = await fetchFotoportadasFeed();
+          const allItems = parseFotoportadasItems(xml);
+          const item = allItems.find(i => i.guid === entry.guid);
+
+          if (!item) {
+            if (chatId && messageId) {
+              try { await ctx.api.editMessageText(chatId, messageId, '\u{274C} Item ya no est\u00e1 en el feed. Intenta m\u00e1s tarde.'); } catch {}
+            }
+            return;
+          }
+
+          const urls = extractFotoportadaImages(item.contentEncoded);
+          const photos = await downloadPhotos(urls);
+          const caption = `\u{1F4F0} <b>${escapeHtml(item.title)}</b>`;
+          const regenKeyboard = new InlineKeyboard().text('\u{1F504}', `regen_rss:fotoportadas:${entry.guid.slice(0, 20)}`);
+
+          if (chatId) {
+            if (messageId) {
+              try { await ctx.api.deleteMessage(chatId, messageId); } catch {}
+            }
+
+            let newMessageId: number | undefined;
+
+            if (photos.length >= 2) {
+              const mediaGroup = photos.map((p, i) =>
+                InputMediaBuilder.photo(new InputFile(p.buf, p.name), i === 0 ? { caption, parse_mode: 'HTML' as const } : {}),
+              );
+              const sent = await ctx.api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true });
+              newMessageId = sent[0]?.message_id;
+              // Follow-up regen button — media groups can't carry inline keyboards.
+              await ctx.api.sendMessage(chatId, '\u{1F504}', {
+                disable_notification: true,
+                reply_markup: regenKeyboard,
+              });
+            } else if (photos.length === 1) {
+              const sent = await ctx.api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
+                caption, parse_mode: 'HTML', disable_notification: true, reply_markup: regenKeyboard,
+              });
+              newMessageId = sent.message_id;
+            }
+
+            if (newMessageId) {
+              updateRegistryEntry(entry.guid, { messageId: newMessageId }).catch(() => {});
+            }
+          }
+
+          console.log(JSON.stringify({
+            event: 'regen_rss_success',
+            source: 'fotoportadas',
             guid: entry.guid,
             timestamp: new Date().toISOString(),
           }));

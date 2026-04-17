@@ -45,7 +45,7 @@ export function parseFotoportadasItems(xml: string): FotoportadasRssItem[] {
 
 const MAX_PHOTO_SIZE = 9 * 1024 * 1024; // 9 MB safety margin
 
-function extractFotoportadaImages(html: string): string[] {
+export function extractFotoportadaImages(html: string): string[] {
   const seen = new Set<string>();
   const urls: string[] = [];
   const imgRegex = /<img\s[^>]*src=["']([^"']+)["'][^>]*>/gi;
@@ -65,7 +65,7 @@ function extractFotoportadaImages(html: string): string[] {
 }
 
 // Download images as buffers for Telegram media group
-async function downloadPhotos(urls: string[]): Promise<{ buf: Uint8Array; name: string }[]> {
+export async function downloadPhotos(urls: string[]): Promise<{ buf: Uint8Array; name: string }[]> {
   const photos: { buf: Uint8Array; name: string }[] = [];
   for (const url of urls.slice(0, 10)) {
     try {
@@ -82,7 +82,7 @@ async function downloadPhotos(urls: string[]): Promise<{ buf: Uint8Array; name: 
 
 // --- Regen keyboard ---
 
-function createRssRegenKeyboard(source: string, guid: string): InlineKeyboard {
+export function createRssRegenKeyboard(source: string, guid: string): InlineKeyboard {
   const guidHash = guid.slice(0, 20);
   return new InlineKeyboard().text('\u{1F504}', `regen_rss:${source}:${guidHash}`);
 }
@@ -144,6 +144,7 @@ const poller = createPoller<FotoportadasRssItem>({
           caption,
           parse_mode: 'HTML',
           disable_notification: true,
+          reply_markup: createRssRegenKeyboard('fotoportadas', item.guid),
         }),
         'sendPhoto', 'fotoportadas',
       );
