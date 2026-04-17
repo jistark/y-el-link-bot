@@ -146,6 +146,13 @@ const poller = createPoller<AdprensaRssItem>({
     // Create Telegraph page
     const result = await createPage(article);
 
+    // Mark as posted BEFORE sending to the channel — a transient send
+    // failure (Telegram 5xx, rate limit edge case) should not cause the
+    // next poll cycle to create a SECOND Telegraph page and duplicate.
+    // Matches the "at-most-once" pattern used by rss-poller.
+    posted.add(item.guid);
+    await save();
+
     // Contact lists expire after 72h (contain emails/phones)
     if (contactList) {
       const LISTADO_TTL = 72 * 60 * 60 * 1000;
@@ -168,9 +175,6 @@ const poller = createPoller<AdprensaRssItem>({
       }),
       'sendMessage', 'adprensa',
     );
-
-    posted.add(item.guid);
-    await save();
 
     // Persist to registry (survives redeploys)
     addRegistryEntry({

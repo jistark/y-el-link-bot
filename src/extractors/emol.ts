@@ -30,7 +30,10 @@ export async function extract(url: string): Promise<Article> {
 
   const data = await res.json() as { hits: { hits: { _source: EmolHit }[] } };
   const hit = data?.hits?.hits?.[0]?._source;
-  if (!hit?.texto) throw new Error('Artículo no encontrado en ElasticSearch');
+  // Guard against missing hit OR non-string body (ES schema drift).
+  if (!hit || typeof hit.texto !== 'string' || !hit.texto) {
+    throw new Error('Artículo no encontrado en ElasticSearch');
+  }
 
   const images = (hit.tablas?.tablaMedios || [])
     .filter(m => m.Tipo === 'Foto' && m.Url)

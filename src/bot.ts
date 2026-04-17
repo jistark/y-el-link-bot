@@ -41,10 +41,16 @@ const EXTRA_ALLOWED = new Set([
 // or EXTRA_ALLOWED) are silently dropped. Only curated sources get extracted.
 
 function isPrivateOrReservedHost(hostname: string): boolean {
-  // Loopback
-  if (/^(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])$/i.test(hostname)) return true;
-  // Private ranges (RFC 1918) and link-local / cloud metadata
-  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(hostname)) return true;
+  // Strip optional surrounding brackets (some parsers keep them on IPv6)
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  // Loopback (IPv4 + IPv6)
+  if (h === 'localhost' || /^127\.\d+\.\d+\.\d+$/.test(h) || h === '0.0.0.0' || h === '::1') return true;
+  // Private ranges (RFC 1918) + link-local / cloud metadata (IPv4)
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(h)) return true;
+  // IPv6-mapped IPv4 (::ffff:169.254.169.254 cloud metadata bypass)
+  if (/^::ffff:(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.|0\.0\.0\.0)/.test(h)) return true;
+  // IPv6 ULA (fd00::/8) and link-local (fe80::/10)
+  if (/^(fd[0-9a-f]{2}|fe[89ab][0-9a-f]):/.test(h)) return true;
   return false;
 }
 

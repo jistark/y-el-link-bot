@@ -61,7 +61,10 @@ export async function extract(url: string): Promise<Article> {
   const data: LaSegundaResponse = await response.json();
   const source = data._source;
 
-  const body = processMacros(source.texto);
+  // External API: source.texto is typed string but can arrive null/undefined
+  // (article without body) or as a non-string. Coerce to avoid crashing
+  // .replace() inside processMacros.
+  const body = typeof source.texto === 'string' ? processMacros(source.texto) : '';
 
   const images: Article['images'] = [];
   if (source.tablas?.tablaMedios) {
