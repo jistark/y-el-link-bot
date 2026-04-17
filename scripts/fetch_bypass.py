@@ -32,7 +32,7 @@ PROXY_URL = os.environ.get('PROXY_URL')
 # protection). Override with PROXY_DOMAINS env var (comma-separated).
 DEFAULT_PROXY_DOMAINS = [
     'ft.com', 'bloomberg.com', 'nytimes.com', 'theatlantic.com',
-    'washingtonpost.com', 'wired.com',
+    'washingtonpost.com', 'wired.com', 'dolar.cl',
 ]
 PROXY_DOMAINS = (
     [d.strip() for d in os.environ['PROXY_DOMAINS'].split(',') if d.strip()]
@@ -40,11 +40,13 @@ PROXY_DOMAINS = (
 )
 
 # Domains needing JS rendering (Chromium spin-up — slower, more billable units).
-# Empty by default; opt-in via PROXY_JS_DOMAINS env var.
-JS_DOMAINS = [
-    d.strip() for d in os.environ.get('PROXY_JS_DOMAINS', '').split(',')
-    if d.strip()
-]
+# dolar.cl requires it: Vercel Security Checkpoint is a JS challenge that
+# can't be bypassed with header-only proxying.
+DEFAULT_JS_DOMAINS = ['dolar.cl']
+JS_DOMAINS = (
+    [d.strip() for d in os.environ['PROXY_JS_DOMAINS'].split(',') if d.strip()]
+    if os.environ.get('PROXY_JS_DOMAINS') else DEFAULT_JS_DOMAINS
+)
 
 # Full browser-like headers to pass datacenter IP reputation checks
 BROWSER_HEADERS = {

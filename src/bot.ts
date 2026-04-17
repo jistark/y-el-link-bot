@@ -85,6 +85,7 @@ import {
   getMatchesForTeam, getMatchesAtTime, getCountdown, getAllTeams,
   formatMatchesForDate, formatMatchesForWeek, formatMatchesForTeam, formatNotification,
 } from './commands/mundial.js';
+import { fetchBypass } from './extractors/fetch-bypass.js';
 import {
   startRssPoller, fetchLatestSenal, fetchSenalFeed,
   parseSenalItems, extractMediaLinks, getPhotos, formatCaption,
@@ -424,26 +425,12 @@ interface LiveQuote {
   datetime: string;
 }
 
-async function fetchDollarPrices(): Promise<{
+type DollarData = {
   live: LiveQuote | null;
   quotes: { source: typeof DOLLAR_SOURCES[number]; quote: DollarQuote | null }[];
-}> {
-  // Fetch HTML de dolar.cl - los precios están embebidos como React Query dehydrated state.
-  // dolar.cl usa Vercel con bot protection — desde datacenter IPs siempre devuelve
-  // challenge page. fetchBypass/proxy agrega 30s+ de latencia que excede el webhook
-  // timeout de Grammy (10s), causando reintentos y mensajes duplicados.
-  // Si falla, dejamos que el caller caiga a mindicador.cl (rápido y fiable).
-  const response = await fetch('https://dolar.cl/', {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      'sec-fetch-dest': 'document',
-      'sec-fetch-mode': 'navigate',
-      'sec-fetch-site': 'none',
-    },
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const html = await response.text();
+};
+
+function parseDollarHtml(html: string): DollarData {
   if (!html.includes('"buy"')) throw new Error('dolar.cl devolvió challenge page');
 
   // Extraer live quote del dehydrated state
@@ -462,7 +449,6 @@ async function fetchDollarPrices(): Promise<{
   }
 
   // Extraer quotes del dehydrated state (React Query)
-  // Los sources y data blocks aparecen en el mismo orden en el HTML
   // dolar.cl puede tener dos formatos de hydration:
   //   lastQuote|{\"source\":\"fintual\"}  (escaped)
   //   lastQuote","source":"fintual"}      (JSON)
@@ -486,7 +472,6 @@ async function fetchDollarPrices(): Promise<{
     throw new Error('dolar.cl no devolvió datos de precios');
   }
 
-  // Mapear sources a data por posición
   const sourceDataMap = new Map<string, { buy: number; sell: number; time: number }>();
   for (let i = 0; i < Math.min(sourceOrder.length, dataBlocks.length); i++) {
     sourceDataMap.set(sourceOrder[i], dataBlocks[i]);
@@ -509,6 +494,70 @@ async function fetchDollarPrices(): Promise<{
   });
 
   return { live, quotes };
+}
+
+// Fast path: Bun native fetch (8s timeout, usually fails from datacenter IPs)
+async function fetchDollarPrices(): Promise<DollarData> {
+  const response = await fetch('https://dolar.cl/', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return parseDollarHtml(await response.text());
+}
+
+// Slow path: IPRoyal proxy with JS rendering (background only)
+async function fetchDollarPricesViaProxy(): Promise<DollarData> {
+  const html = await fetchBypass('https://dolar.cl/');
+  return parseDollarHtml(html);
+}
+
+function formatDollarRich(
+  { live, quotes }: DollarData,
+  filter: string | undefined,
+  time: string,
+): string | null {
+  let header = '💵 <b>DÓLAR AHORA</b>';
+  if (live) {
+    const arrow = live.change >= 0 ? '📈' : '📉';
+    const sign = live.change >= 0 ? '+' : '';
+    const pct = (live.percentChange * 100).toFixed(2).replace('.', ',');
+    header += `: ${formatCLP(live.close)}`;
+    header += `\n${arrow} ${sign}${pct}% · Rango: ${formatCLP(live.low)} – ${formatCLP(live.high)}`;
+  }
+
+  let validQuotes = quotes.filter(({ quote }) => !!quote);
+
+  if (filter) {
+    const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const filterNorm = normalize(filter);
+    validQuotes = validQuotes.filter(({ source }) =>
+      normalize(source.id).includes(filterNorm) ||
+      normalize(source.name).includes(filterNorm) ||
+      source.aliases.some(a => normalize(a).includes(filterNorm) || filterNorm.includes(normalize(a)))
+    );
+    if (validQuotes.length === 0) return null;
+  }
+
+  validQuotes.sort((a, b) => (a.quote!.buy) - (b.quote!.buy));
+
+  const lines = validQuotes.map(({ source, quote }) => {
+    const buy = formatCLP(quote!.buy);
+    const sell = quote!.sell != null ? formatCLP(quote!.sell) : '—';
+    return `${source.name}: ${buy} · ${sell}`;
+  });
+
+  return [
+    header, '',
+    `🏦 Compra · Venta (${time} hrs)`,
+    ...lines, '',
+    'Fuente: <a href="https://dolar.cl">dolar.cl</a>',
+  ].join('\n');
 }
 
 function formatCLP(value: number): string {
@@ -625,94 +674,69 @@ export function createBot(token: string): Bot {
   // Con argumento: filtra por nombre de fuente (ej: /dolar bancoestado)
   bot.command(['dolar', 'usd'], async (ctx) => {
     console.log('Comando dolar recibido');
+    const filter = ctx.match?.trim().toLowerCase();
+    const time = getChileTime();
 
+    // Fast path: Bun native fetch (funciona local, falla desde datacenter)
     try {
-      const { live, quotes } = await fetchDollarPrices();
-      const time = getChileTime();
-      const filter = ctx.match?.trim().toLowerCase();
-
-      // Línea principal: DÓLAR AHORA
-      let header = '💵 <b>DÓLAR AHORA</b>';
-      if (live) {
-        const arrow = live.change >= 0 ? '📈' : '📉';
-        const sign = live.change >= 0 ? '+' : '';
-        const pct = (live.percentChange * 100).toFixed(2).replace('.', ',');
-        header += `: ${formatCLP(live.close)}`;
-        header += `\n${arrow} ${sign}${pct}% · Rango: ${formatCLP(live.low)} – ${formatCLP(live.high)}`;
-      }
-
-      // Filtrar por fuente si se especificó
-      let validQuotes = quotes.filter(({ quote }) => !!quote);
-
-      if (filter) {
-        const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-        const filterNorm = normalize(filter);
-        const filtered = validQuotes.filter(({ source }) =>
-          normalize(source.id).includes(filterNorm) ||
-          normalize(source.name).includes(filterNorm) ||
-          source.aliases.some(a => normalize(a).includes(filterNorm) || filterNorm.includes(normalize(a)))
+      const data = await fetchDollarPrices();
+      const msg = formatDollarRich(data, filter, time);
+      if (!msg) {
+        const available = DOLLAR_SOURCES.map(s => s.name).join(', ');
+        await ctx.reply(
+          `❌ No encontré "<b>${escapeHtml(filter || '')}</b>"\n\n🏦 Fuentes disponibles: ${available}`,
+          { parse_mode: 'HTML' }
         );
-
-        if (filtered.length === 0) {
-          const available = DOLLAR_SOURCES.map(s => s.name).join(', ');
-          await ctx.reply(
-            `❌ No encontré "<b>${escapeHtml(filter || '')}</b>"\n\n🏦 Fuentes disponibles: ${available}`,
-            { parse_mode: 'HTML' }
-          );
-          return;
-        }
-        validQuotes = filtered;
+        return;
       }
-
-      validQuotes.sort((a, b) => (a.quote!.buy) - (b.quote!.buy));
-
-      const lines = validQuotes.map(({ source, quote }) => {
-        const buy = formatCLP(quote!.buy);
-        const sell = quote!.sell != null ? formatCLP(quote!.sell) : '—';
-        return `${source.name}: ${buy} · ${sell}`;
-      });
-
-      const message = [
-        header,
-        '',
-        `🏦 Compra · Venta (${time} hrs)`,
-        ...lines,
-        '',
-        'Fuente: <a href="https://dolar.cl">dolar.cl</a>',
-      ].join('\n');
-
-      await ctx.reply(message, { parse_mode: 'HTML' });
-    } catch (primaryError) {
+      await ctx.reply(msg, { parse_mode: 'HTML' });
+      return;
+    } catch (err) {
       console.error(JSON.stringify({
-        event: 'dollar_error',
-        chatId: ctx.chat.id,
-        error: primaryError instanceof Error ? primaryError.message : String(primaryError),
+        event: 'dollar_error', chatId: ctx.chat.id,
+        error: err instanceof Error ? err.message : String(err),
         timestamp: new Date().toISOString(),
       }));
-
-      // Fallback: dólar observado desde mindicador.cl
-      try {
-        const valor = await fetchDollarFallback();
-        const time = getChileTime();
-        const message = [
-          `💵 <b>DÓLAR OBSERVADO</b>: ${formatCLP(valor)}`,
-          '',
-          `<i>Valor oficial Banco Central (${time} hrs)</i>`,
-          '<i>Detalle por banco no disponible</i>',
-          '',
-          'Fuente: <a href="https://mindicador.cl">mindicador.cl</a>',
-        ].join('\n');
-        await ctx.reply(message, { parse_mode: 'HTML' });
-      } catch (fallbackError) {
-        console.error(JSON.stringify({
-          event: 'dollar_fallback_error',
-          chatId: ctx.chat.id,
-          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-          timestamp: new Date().toISOString(),
-        }));
-        await ctx.reply('❌ No pude obtener el precio del dólar.');
-      }
     }
+
+    // Fallback: responder con mindicador.cl inmediatamente
+    let sentMessage: Awaited<ReturnType<typeof ctx.reply>> | null = null;
+    try {
+      const valor = await fetchDollarFallback();
+      sentMessage = await ctx.reply([
+        `💵 <b>DÓLAR OBSERVADO</b>: ${formatCLP(valor)}`,
+        '',
+        `<i>Valor oficial Banco Central (${time} hrs)</i>`,
+        '<i>Detalle por banco no disponible</i>',
+        '',
+        'Fuente: <a href="https://mindicador.cl">mindicador.cl</a>',
+      ].join('\n'), { parse_mode: 'HTML' });
+    } catch (fallbackError) {
+      console.error(JSON.stringify({
+        event: 'dollar_fallback_error', chatId: ctx.chat.id,
+        error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        timestamp: new Date().toISOString(),
+      }));
+      await ctx.reply('❌ No pude obtener el precio del dólar.');
+      return;
+    }
+
+    // Background: intentar dolar.cl vía proxy (JS rendering).
+    // Si funciona, reemplaza el mensaje de mindicador con datos completos.
+    const chatId = sentMessage.chat.id;
+    const messageId = sentMessage.message_id;
+    fetchDollarPricesViaProxy().then(async (data) => {
+      const msg = formatDollarRich(data, filter, getChileTime());
+      if (msg) {
+        await ctx.api.editMessageText(chatId, messageId, msg, { parse_mode: 'HTML' });
+      }
+    }).catch((err) => {
+      console.error(JSON.stringify({
+        event: 'dollar_proxy_bg_failed', chatId,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    });
   });
 
   // Comando /donar (también responde a /donate)
