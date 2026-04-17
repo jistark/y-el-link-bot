@@ -1,4 +1,4 @@
-# Diseño: Proxy Residencial para Bypass de Bot Protection
+# Diseño: IPRoyal Web Unblocker para Bypass de Bot Protection
 
 ## Problema
 
@@ -8,104 +8,129 @@ curl_cffi resuelve el fingerprint TLS (JA3/JA4) pero no la reputación de IP.
 
 ## Solución
 
-Agregar un proxy residencial como capa intermedia. curl_cffi soporta proxies nativamente — la combinación de TLS impersonation + IP residencial es el estándar para bypass de Cloudflare.
+Enrutar requests a sitios bloqueados a través de **IPRoyal Web Unblocker** — un servicio managed que combina IP rotation residencial + retries automáticos + UA randomization + opcional JS rendering, todo detrás de un endpoint HTTP proxy estándar.
 
 ```
-Bot (Render) → curl_cffi (Chrome TLS) → Proxy Residencial → Sitio Target
+Bot (Render) → curl_cffi (Chrome TLS) → Web Unblocker (managed) → Sitio Target
 ```
 
-## Servicio recomendado
+Decisión: **Web Unblocker > Residential Proxy puro** porque elimina la complejidad de orquestar retries/rotación/UA cycling nosotros mismos. A $0.0009-$0.001 por request, el costo no es un factor.
 
-**IPRoyal Residential** — $1.75/GB, ~$2-5/mes para el volumen del bot.
+## Servicio: IPRoyal Web Unblocker
 
-Alternativas:
-- PacketStream ($1/GB, calidad menor)
-- Webshare ($7/GB, más confiable)
-- Bright Data ($8.40/GB, premium)
+- Endpoint: `http://USER:PASS_country-us@unblocker.iproyal.com:12323`
+- Auth: solo basic auth via URL — **no requiere IP allowlist** (perfecto para Render donde la IP no es estática).
+- TLS: el servicio MITM-termina SSL → requests deben usar `verify=False`.
+- Geo: incluido en password (`_country-us`, `_country-gb`, etc.).
+- JS rendering: opt-in via `_render-1` en password.
+- Concurrencia: hasta 200 conexiones simultáneas.
+
+Alternativas no elegidas:
+- IPRoyal Residential puro ($1.75/GB) — más barato a alto volumen pero requiere implementar bypass logic local.
+- Bright Data Web Unlocker — más caro, sin ventaja para nuestro caso.
+- Smartproxy Site Unblocker — similar pricing/features, Web Unblocker ya cubre.
 
 ## Implementación
 
-### 1. Variable de entorno
+### Variable de entorno
 
 ```
-PROXY_URL=http://USER:PASS_country-us@geo.iproyal.com:12321
+PROXY_URL=http://USER:PASS_country-us@unblocker.iproyal.com:12323
+PROXY_DOMAINS=                # Opcional, CSV. Default: ver script.
+PROXY_JS_DOMAINS=             # Opcional, CSV. Default: vacío (sin JS).
 ```
 
-Agregar en Render Dashboard → Environment Variables.
+Setear en Render Dashboard → Environment Variables.
 
-### 2. Cambios en `scripts/fetch_bypass.py`
+### Cambios en `scripts/fetch_bypass.py`
 
-```python
-import os
+Implementado: la función `fetch_direct(url, headers, use_proxy=False, render=False)` acepta `proxies={"http": PROXY_URL, "https": PROXY_URL}` con `verify=False` cuando `use_proxy=True`.
 
-PROXY_URL = os.environ.get('PROXY_URL')
+Helpers:
+- `needs_proxy(url)` — chequea si el dominio está en `PROXY_DOMAINS`.
+- `needs_js(url)` — chequea si requiere JS rendering.
+- `proxy_url_with_render()` — inyecta `_render-1` en el password.
+- `log_proxy(...)` — JSON line a stderr para auditoría.
 
-# Sites que requieren proxy (Cloudflare/Vercel bot protection)
-PROXY_DOMAINS = ['ft.com', 'bloomberg.com', 'nytimes.com', 'dolar.cl',
-                 'theatlantic.com', 'washingtonpost.com', 'wired.com']
+### Flujo (chrome mode)
 
-def needs_proxy(url):
-    from urllib.parse import urlparse
-    domain = urlparse(url).hostname or ''
-    return any(domain.endswith(d) for d in PROXY_DOMAINS)
+1. Si `PROXY_URL` set y `needs_proxy(url)` → **Web Unblocker first** (skip directo, va a fallar).
+2. Si falla o no aplica → fetch directo con curl_cffi (2 intentos con backoff).
+3. Si falla → Google Webcache.
+4. Si falla → exit 1.
 
-def fetch(url, headers):
-    proxies = None
-    if PROXY_URL and needs_proxy(url):
-        proxies = {"http": PROXY_URL, "https": PROXY_URL}
+Modos `googlebot` e `inspectiontool` siguen sin proxy — esos UAs bypassan reputación de IP por sí solos.
 
-    return requests.get(
-        url,
-        impersonate='chrome',
-        headers=headers,
-        proxies=proxies,
-        timeout=20,
-        allow_redirects=True,
-    )
-```
+### Sitios que NO necesitan proxy
 
-### 3. Flujo con fallback
-
-```
-1. fetch directo (sin proxy) — funciona para sitios chilenos sin CF
-2. si falla → fetch con proxy residencial
-3. si falla → Google Webcache (último recurso)
-```
-
-### 4. Sitios que NO necesitan proxy
-
-Los sitios chilenos sin Cloudflare funcionan directo desde Render:
+Funcionan directo desde Render:
 - latercera.com (OpenResty)
 - df.cl (AltaVoz)
 - elmercurio.com (BigIP)
 - lasegunda.com, lun.com, biobiochile.cl, cnnchile.com
 - elpais.com (OpenResty)
 - primedigital.cl (horóscopo)
-- Todos los nuevos: adnradio, t13, tvn, mega, chilevision, etc.
+- adnradio, t13, tvn, mega, chilevision, etc.
 
-### 5. Monitoreo de consumo
+### Monitoreo de consumo
 
-Agregar logging del uso de proxy para controlar costos:
+Web Unblocker cobra por request. Logging estructurado en stderr:
 
-```python
-if proxies:
-    print(f"proxy: {domain} {len(r.content)} bytes", file=sys.stderr)
+```json
+{"event":"proxy_use","domain":"www.ft.com","bytes":86421,"status":200,"render":false}
 ```
 
-Esto permite calcular GB/mes desde los logs de Render.
+Auditoría desde Render logs:
 
-## Costos estimados
+```bash
+# Count del mes
+grep '"event":"proxy_use"' logs.txt | wc -l
 
-| Escenario | Requests/día | GB/mes | Costo/mes (IPRoyal) |
-|-----------|-------------|--------|---------------------|
-| Bajo | 50 | ~0.5 | ~$1 |
-| Normal | 200 | ~2 | ~$3.50 |
-| Alto | 500 | ~5 | ~$8.75 |
+# Breakdown por dominio
+grep '"event":"proxy_use"' logs.txt | jq -r .domain | sort | uniq -c | sort -rn
+
+# Tasa de éxito (cada fallo = request gastado igual)
+grep '"event":"proxy_use"' logs.txt | jq '.status' | \
+  awk '$1>=200 && $1<300 {ok++} END {print ok"/"NR}'
+```
+
+## Costos
+
+Pricing IPRoyal Web Unblocker (Apr 2026):
+
+| Pack | Precio | $/1000 req | Vida útil estimada |
+|---|---|---|---|
+| 1.000 | $1.00 | $1.00 | ~2-4 semanas |
+| **5.000 (Recomendado)** | **$4.50** | **$0.90 (-10%)** | **~2-3 meses** |
+| 50.000 | $40.00 | $0.80 (-20%) | ~2-3 años |
+| 100.000 | $70.00 | $0.70 (-30%) | ~5 años |
+
+Volumen estimado: 50-200 paywalled requests/día = 1.500-6.000/mes.
+
+**Recomendación**: empezar con pack de 5.000 ($4.50), validar arquitectura ~1-2 meses, después saltar a 50.000 si el uso es estable.
 
 ## Pasos para implementar
 
-1. Crear cuenta en IPRoyal (o alternativa)
-2. Obtener credenciales del proxy residencial
-3. Agregar `PROXY_URL` en Render env vars
-4. Modificar `scripts/fetch_bypass.py` según diseño arriba
-5. Deploy y verificar con FT/Bloomberg
+1. Crear cuenta en https://iproyal.com → Web Unblocker (no Residential Proxies — son productos distintos).
+2. Comprar pack de 5.000 requests ($4.50).
+3. Generar credenciales con país US: `USER:PASS_country-us`.
+4. URL final: `http://USER:PASS_country-us@unblocker.iproyal.com:12323`.
+5. Agregar `PROXY_URL` en Render dashboard.
+6. Deploy y verificar con FT/Bloomberg.
+
+## Verificación
+
+```bash
+# Sin proxy (debe funcionar igual que hoy)
+python3 scripts/fetch_bypass.py https://www.ft.com/content/<id>
+
+# Con Web Unblocker
+PROXY_URL='http://USER:PASS_country-us@unblocker.iproyal.com:12323' \
+  python3 scripts/fetch_bypass.py https://www.ft.com/content/<id>
+# stderr esperado: {"event":"proxy_use","domain":"www.ft.com","bytes":NNNNN,"status":200,...}
+
+# JS rendering opt-in
+PROXY_URL='...' PROXY_JS_DOMAINS='ft.com' \
+  python3 scripts/fetch_bypass.py https://www.ft.com/content/<id>
+# stderr esperado: ..."render":true
+```

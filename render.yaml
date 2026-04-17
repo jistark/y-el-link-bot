@@ -19,3 +19,9 @@ services:
         sync: false
       - key: POLLER_CHAT_ID
         sync: false
+      - key: PROXY_URL
+        sync: false
+      - key: PROXY_DOMAINS
+        sync: false
+      - key: PROXY_JS_DOMAINS
+        sync: false
