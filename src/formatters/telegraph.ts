@@ -25,6 +25,7 @@ const WORDS = [
 // Códigos por fuente
 const SOURCE_CODES: Record<Article['source'], string> = {
   elmercurio: 'em',
+  emol: 'eml',
   lasegunda: 'ls',
   latercera: 'lt',
   df: 'df',
@@ -431,6 +432,7 @@ export async function deletePage(path: string): Promise<boolean> {
 function getSourceName(source: Article['source']): string {
   const names: Record<Article['source'], string> = {
     elmercurio: 'El Mercurio',
+    emol: 'Emol',
     lasegunda: 'La Segunda',
     latercera: 'La Tercera',
     df: 'Diario Financiero',

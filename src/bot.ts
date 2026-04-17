@@ -1038,8 +1038,10 @@ export function createBot(token: string): Bot {
       // Enviar mensaje de "procesando" con botón de undo (reply al mensaje original)
       const botMessage = await ctx.reply('⏳ Procesando artículo...', {
         reply_markup: createUndoKeyboard(),
-        reply_to_message_id: ctx.message.message_id,
-        allow_sending_without_reply: true,
+        reply_parameters: {
+          message_id: ctx.message.message_id,
+          allow_sending_without_reply: true,
+        },
       });
 
       // Configurar timeout para procesar después del período de gracia
