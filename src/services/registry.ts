@@ -17,7 +17,7 @@ const MAX_ENTRIES = 100;
 
 export interface RegistryEntry {
   /** Discriminator for the processing pipeline */
-  type: 'extractor' | 'rss-senal' | 'rss-adprensa';
+  type: 'extractor' | 'rss-senal' | 'rss-adprensa' | 'rss-fotoportadas';
   /** Fetchable URL (article URL for extractors, RSS <link> for pollers) */
   originalUrl: string;
   /** RSS GUID — only for poller entries */

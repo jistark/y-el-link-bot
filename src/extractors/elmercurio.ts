@@ -342,6 +342,7 @@ async function searchElasticSearch(keywords: string, date: string): Promise<{ ar
   const url = `${ELASTICSEARCH_URL}?source=${encodedQuery}&source_content_type=application/json`;
 
   let response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`ElasticSearch primary query failed: HTTP ${response.status}`);
   let data: ElasticSearchResponse = await response.json();
 
   // Si no hay resultados con match_phrase, intentar con match normal
@@ -359,6 +360,7 @@ async function searchElasticSearch(keywords: string, date: string): Promise<{ ar
     };
     const fallbackEncoded = encodeURIComponent(JSON.stringify(fallbackQuery));
     response = await fetch(`${ELASTICSEARCH_URL}?source=${fallbackEncoded}&source_content_type=application/json`, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`ElasticSearch fallback query failed: HTTP ${response.status}`);
     data = await response.json();
   }
 

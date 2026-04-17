@@ -154,7 +154,7 @@ const poller = createPoller<FotoportadasRssItem>({
     await save();
 
     addRegistryEntry({
-      type: 'rss-adprensa',
+      type: 'rss-fotoportadas',
       originalUrl: item.link,
       guid: item.guid,
       source: 'fotoportadas',
