@@ -11,6 +11,7 @@ Usage: python3 fetch_bypass.py <url> [referer] [mode]
 Output: HTML to stdout, errors to stderr, exit code 0 on success.
 """
 import os
+import re
 import sys
 import time
 import json
@@ -25,14 +26,20 @@ try:
 except ImportError:
     pass
 
-# IPRoyal Web Unblocker URL — http://USER:PASS_country-us@unblocker.iproyal.com:12323
+# IPRoyal Web Unblocker URL — http://USER:PASS@unblocker.iproyal.com:12323
+# The password may include baked-in params like _country-us (from IPRoyal dashboard).
+# build_proxy_url() strips them before appending per-request params.
 PROXY_URL = os.environ.get('PROXY_URL')
+
+# Regex matching known IPRoyal parameter suffixes in the password segment.
+# Used to strip baked-in params before rebuilding per-request.
+_IPROYAL_PARAM_RE = re.compile(r'_(?:render-\d+|country-[a-z]{2}|city-[\w-]+|state-[\w-]+)')
 
 # Domains that can't be fetched from datacenter IPs (Cloudflare/Vercel bot
 # protection). Override with PROXY_DOMAINS env var (comma-separated).
 DEFAULT_PROXY_DOMAINS = [
     'ft.com', 'bloomberg.com', 'nytimes.com', 'theatlantic.com',
-    'washingtonpost.com', 'wired.com', 'dolar.cl',
+    'wired.com', 'dolar.cl',
 ]
 PROXY_DOMAINS = (
     [d.strip() for d in os.environ['PROXY_DOMAINS'].split(',') if d.strip()]
@@ -70,6 +77,16 @@ BROWSER_HEADERS = {
     'Upgrade-Insecure-Requests': '1',
 }
 
+# Minimal headers for proxy + JS rendering. When Chromium renders the page,
+# it generates its own Sec-*, Referer, Accept, and User-Agent headers;
+# IPRoyal strips ours anyway (documented behavior). Only pass what survives.
+PROXY_RENDER_HEADERS = {
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'max-age=0',
+    'Upgrade-Insecure-Requests': '1',
+}
+
 
 def needs_proxy(url):
     domain = (urlparse(url).hostname or '').lower()
@@ -95,7 +112,10 @@ def get_country(url):
 def build_proxy_url(render=False, country=None):
     """Build proxy URL with optional render and country suffixes.
 
-    http://USER:PASS@host:port  →  http://USER:PASS_render-1_country-cl@host:port
+    Strips any IPRoyal params already baked into the PROXY_URL password
+    (e.g. _country-us from the dashboard) before appending per-request ones.
+
+    PASS_country-us + country='cl' → PASS_country-cl  (no duplicates)
     """
     if not PROXY_URL:
         return None
@@ -103,25 +123,29 @@ def build_proxy_url(render=False, country=None):
         scheme, rest = PROXY_URL.split('://', 1)
         auth, host = rest.rsplit('@', 1)
         user, pwd = auth.split(':', 1)
+        base_pwd = _IPROYAL_PARAM_RE.sub('', pwd)
         suffix = ''
         if render:
             suffix += '_render-1'
         if country:
             suffix += f'_country-{country}'
-        return f"{scheme}://{user}:{pwd}{suffix}@{host}"
+        return f"{scheme}://{user}:{base_pwd}{suffix}@{host}"
     except ValueError:
         return PROXY_URL
 
 
-def log_proxy(domain, bytes_used, status, render=False):
+def log_proxy(domain, bytes_used, status, render=False, country=None):
     """Structured log line for cost auditing via Render logs."""
-    print(json.dumps({
+    entry = {
         'event': 'proxy_use',
         'domain': domain,
         'bytes': bytes_used,
         'status': status,
         'render': render,
-    }), file=sys.stderr)
+    }
+    if country:
+        entry['country'] = country
+    print(json.dumps(entry), file=sys.stderr)
 
 
 def fetch_direct(url, headers, use_proxy=False, render=False, country=None):
@@ -149,7 +173,7 @@ def fetch_direct(url, headers, use_proxy=False, render=False, country=None):
             print(f"proxy_error: {e}", file=sys.stderr)
         return None, None
     if proxies:
-        log_proxy(urlparse(url).hostname or '', len(r.content), r.status_code, render)
+        log_proxy(urlparse(url).hostname or '', len(r.content), r.status_code, render, country)
     if r.status_code >= 400:
         return None, r.status_code
     return r.content, r.status_code
@@ -219,14 +243,19 @@ def main():
         sys.exit(1)
 
     # Default: chrome mode
-    headers = dict(BROWSER_HEADERS)
-    if referer:
-        headers['Referer'] = referer
-        headers['Sec-Fetch-Site'] = 'cross-site'
-
     use_proxy = bool(PROXY_URL) and needs_proxy(url)
     render = needs_js(url)
     country = get_country(url) if use_proxy else None
+
+    # When proxy renders in Chromium, it generates its own browser headers;
+    # ours get stripped. Use minimal set to avoid noise.
+    if use_proxy and render:
+        headers = dict(PROXY_RENDER_HEADERS)
+    else:
+        headers = dict(BROWSER_HEADERS)
+        if referer:
+            headers['Referer'] = referer
+            headers['Sec-Fetch-Site'] = 'cross-site'
 
     if use_proxy:
         # Web Unblocker first — direct fetch from Render IP would fail anyway.

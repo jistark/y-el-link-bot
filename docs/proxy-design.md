@@ -18,12 +18,15 @@ Decisión: **Web Unblocker > Residential Proxy puro** porque elimina la compleji
 
 ## Servicio: IPRoyal Web Unblocker
 
-- Endpoint: `http://USER:PASS_country-us@unblocker.iproyal.com:12323`
+- Endpoint: `http://USER:PASS@unblocker.iproyal.com:12323`
 - Auth: solo basic auth via URL — **no requiere IP allowlist** (perfecto para Render donde la IP no es estática).
 - TLS: el servicio MITM-termina SSL → requests deben usar `verify=False`.
-- Geo: incluido en password (`_country-us`, `_country-gb`, etc.).
-- JS rendering: opt-in via `_render-1` en password.
+- Params en password (underscores): `_country-XX`, `_render-1`, `_city-NAME`, `_state-NAME`.
+- JS rendering: `_render-1` levanta Chromium headless. Más lento (~30-60s) y stripea headers del caller (Sec-Fetch-\*, Referer, Accept).
+- Geo: `_country-cl`, `_country-us`, etc. (ISO 3166-1 alpha-2).
 - Concurrencia: hasta 200 conexiones simultáneas.
+- `build_proxy_url()` stripea params existentes del password base antes de reconstruir (evita duplicados si el dashboard baked-in `_country-us`).
+- API para saldo: `GET https://resi-api.iproyal.com/v1/web-unblocker/me` con `Authorization: Bearer <token>` → `{"available_requests": N}`.
 
 Alternativas no elegidas:
 - IPRoyal Residential puro ($1.75/GB) — más barato a alto volumen pero requiere implementar bypass logic local.
@@ -35,9 +38,11 @@ Alternativas no elegidas:
 ### Variable de entorno
 
 ```
-PROXY_URL=http://USER:PASS_country-us@unblocker.iproyal.com:12323
+PROXY_URL=http://USER:PASS@unblocker.iproyal.com:12323
+# Password puede tener params baked-in (ej. _country-us del dashboard).
+# build_proxy_url() los stripea y reconstruye per-request.
 PROXY_DOMAINS=                # Opcional, CSV. Default: ver script.
-PROXY_JS_DOMAINS=             # Opcional, CSV. Default: vacío (sin JS).
+PROXY_JS_DOMAINS=             # Opcional, CSV. Default: dolar.cl.
 ```
 
 Setear en Render Dashboard → Environment Variables.
