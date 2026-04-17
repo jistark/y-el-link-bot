@@ -39,7 +39,7 @@ _IPROYAL_PARAM_RE = re.compile(r'_(?:render-\d+|country-[a-z]{2}|city-[\w-]+|sta
 # protection). Override with PROXY_DOMAINS env var (comma-separated).
 DEFAULT_PROXY_DOMAINS = [
     'ft.com', 'bloomberg.com', 'nytimes.com', 'theatlantic.com',
-    'wired.com', 'dolar.cl',
+    'wired.com', 'dolar.cl', 'reuters.com',
 ]
 PROXY_DOMAINS = (
     [d.strip() for d in os.environ['PROXY_DOMAINS'].split(',') if d.strip()]
@@ -49,7 +49,7 @@ PROXY_DOMAINS = (
 # Domains needing JS rendering (Chromium spin-up — slower, more billable units).
 # dolar.cl requires it: Vercel Security Checkpoint is a JS challenge that
 # can't be bypassed with header-only proxying.
-DEFAULT_JS_DOMAINS = ['dolar.cl']
+DEFAULT_JS_DOMAINS = ['dolar.cl', 'reuters.com']
 JS_DOMAINS = (
     [d.strip() for d in os.environ['PROXY_JS_DOMAINS'].split(',') if d.strip()]
     if os.environ.get('PROXY_JS_DOMAINS') else DEFAULT_JS_DOMAINS

@@ -61,7 +61,7 @@ const URL_PATTERNS = {
   ojoalatele: /(?:^|\.)?ojoalatele\.com$/,
   lahora: /(?:^|\.)?lahora\.cl$/,
   // substack and beehiiv deprecated - extraction unreliable
-  // reuters requires browser-level bypass
+  // reuters: handled by generic extractor + Web Unblocker (JS rendering on)
 } as const;
 
 export type Source = keyof typeof URL_PATTERNS;
