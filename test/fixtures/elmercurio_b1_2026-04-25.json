@@ -1,0 +1,142 @@
+{
+    "siblings": {
+        "firstPage": {
+            "permalink": "page/B/3A4KSPGH/",
+            "page": 1,
+            "id": "3A4KSPGH"
+        },
+        "lastPage": {
+            "permalink": "page/B/3A4KSPJP/",
+            "page": 12,
+            "id": "3A4KSPJP"
+        },
+        "nextPage": {
+            "permalink": "page/B/3A4KSPGI/",
+            "page": 2,
+            "id": "3A4KSPGI"
+        },
+        "prevPage": {
+            "permalink": "page/A/BS4L0B3I/",
+            "page": 14,
+            "id": "BS4L0B3I"
+        }
+    },
+    "permalink": "page/B/1",
+    "kind": "Page",
+    "section_id": "B",
+    "media": {
+        "image_pdf": "pages/img/pdf/3A4KSPGH.pdf",
+        "image_big": "pages/img/big/3A4KSPGH.jpg",
+        "image_tmb": "pages/img/tmb/3A4KSPGH.jpg",
+        "image_mid": "pages/img/mid/3A4KSPGH.jpg"
+    },
+    "type": "EditorialOnly",
+    "pubdate": "25-04-2026",
+    "category_name": "Economía y Negocios",
+    "category_slug": "economia_y_negocios",
+    "product_name": "El_Mercurio",
+    "section_name": "B",
+    "ads": [
+    ],
+    "width": 395,
+    "id": "3A4KSPGH",
+    "page": 1,
+    "articles": [
+        {
+            "width": 307,
+            "height": 105,
+            "posX": 13,
+            "posY": 21,
+            "id": "4H4L0KHE",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "NO_WEB_EYN_B1_NAVEGADOR_A_.ART",
+            "title": "El optimismo de Miguel Torres: <bold>“Vamos a salir de la crisis, no me cabe la menor duda” </bold> <leadin>B 9</leadin>"
+        },
+        {
+            "width": 90,
+            "height": 32,
+            "posX": 176,
+            "posY": 26,
+            "id": "4H4L0KH6",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "NO_WEB_EYN_B1_NAVEGADOR_B.ART",
+            "title": "<bold>Los planes de los dueños de malls en </bold> el negocio de la renta residencial <leadin><bold>B 8</bold></leadin>"
+        },
+        {
+            "width": 109,
+            "height": 32,
+            "posX": 274,
+            "posY": 26,
+            "id": "4H4L0KH4",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "NO_WEB_EYN_B1_NAVEGADOR_C.ART",
+            "title": "<bold>Caroline Vender</bold> , la ingeniera que conduce la empresa madre del Grupo Sigdo Koppers <leadin>B 7</leadin>"
+        },
+        {
+            "width": 254,
+            "height": 381,
+            "posX": 128,
+            "posY": 120,
+            "id": "C14L0LKR",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Empresas_y_Negocios",
+            "noExport": false,
+            "name": "T1_EyN_B1_2504_Invariabi.ART",
+            "title": "<bold>Propuesta de invariabilidad </bold> es más amplia que regímenes de la región"
+        },
+        {
+            "width": 84,
+            "height": 120,
+            "posX": 13,
+            "posY": 152,
+            "id": "C14L0LIV",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "EYN_B1_LLAMADO_A_2504.ART",
+            "title": "<bold>“</bold> No hay que tener a muchas personas <bold>con mucho poder discrecional”</bold> <leadin>B 12</leadin>"
+        },
+        {
+            "width": 86,
+            "height": 147,
+            "posX": 13,
+            "posY": 295,
+            "id": "4H4L0KH0",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "NO_WEB_EYN_B1_LLAMADO_B_2504.ART",
+            "title": "Cómo <bold>Manfred Paulmann construyó su camino </bold> a la presidencia de Cencosud <leadin>B 6</leadin>"
+        },
+        {
+            "width": 84,
+            "height": 37,
+            "posX": 13,
+            "posY": 462,
+            "id": "4H4L0KH2",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "EYN_B1_LLAMADO_C_2504.ART",
+            "title": "Los ajustes que agitan <bold>el rubro de las clínicas </bold> <leadin>B 4</leadin>"
+        },
+        {
+            "width": 381,
+            "height": 201,
+            "posX": 13,
+            "posY": 521,
+            "id": "TV4L0NCV",
+            "noExport": false,
+            "name": "Chile.Nacional.Economía_y_Ne.AR1",
+            "title": "[B] Economía y Negocios"
+        }
+    ],
+    "category_id": "economia_y_negocios",
+    "height": 740
+}

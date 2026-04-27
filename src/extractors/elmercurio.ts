@@ -1,12 +1,62 @@
 import type { Article } from '../types.js';
 
+// Whitelist-based sanitizer for El Mercurio markup tags.
+// Converts known proprietary tags to standard HTML; strips unknown tags
+// but preserves their text content.
+export function sanitizeMercurioMarkup(input: string): string {
+  if (!input) return '';
+  let s = input;
+
+  // Self-closing first (accept attributes)
+  s = s.replace(/<dropcap(\s[^>]*)?\s*\/?>/gi, '');
+
+  // Wrappers we want to drop entirely (outer container only — content kept)
+  s = s.replace(/<\/?body(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?head_label(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?head_deck(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?byline(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?byline_credit(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?head(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?quote(\s[^>]*)?>/gi, '');
+
+  // Tag substitutions (accept attributes on opening tags)
+  s = s.replace(/<bold_intro(\s[^>]*)?>([\s\S]*?)<\/bold_intro>/gi, '<p><b>$2</b></p>');
+  s = s.replace(/<leadin(\s[^>]*)?>([\s\S]*?)<\/leadin>/gi, '<b>$2</b>');
+  s = s.replace(/<subhead(\s[^>]*)?>([\s\S]*?)<\/subhead>/gi, '<h3>$2</h3>');
+  s = s.replace(/<bold(\s[^>]*)?>/gi, '<b>').replace(/<\/bold>/gi, '</b>');
+  s = s.replace(/<italic(\s[^>]*)?>/gi, '<i>').replace(/<\/italic>/gi, '</i>');
+  s = s.replace(/<P(\s[^>]*)?>/gi, '<p>').replace(/<\/P>/gi, '</p>');
+
+  // Strip <highlight> wrapper but keep content
+  s = s.replace(/<\/?highlight(\s[^>]*)?>/gi, '');
+
+  // Strip any remaining unknown tags (preserve content)
+  // Allowed: p, b, i, h3, h4, blockquote, figure, img, figcaption, br, a, hr, aside
+  s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9_-]*)(\s[^>]*)?>/g, (m, tag) => {
+    const allowed = new Set(['p', 'b', 'i', 'h3', 'h4', 'blockquote', 'figure', 'img', 'figcaption', 'br', 'a', 'hr', 'aside', 'em', 'strong']);
+    return allowed.has(tag.toLowerCase()) ? m : '';
+  });
+
+  return s.trim();
+}
+
 // Respuesta de la API JSON de digital.elmercurio.com
 interface MercurioJsonArticle {
   title?: string;
   head?: string;
+  head_label?: string;
   head_deck?: string;
   byline?: string;
   body?: string;
+  quotes?: { quote: string }[];
+  images?: {
+    path: string;
+    caption?: string;
+    credits?: string;
+    name?: string;
+    noExport?: boolean;
+    infographic?: boolean;
+  }[];
 }
 
 // Respuesta de newsapi.ecn.cl (igual que La Segunda)
@@ -29,8 +79,20 @@ interface NewsApiResponse {
 export interface PageArticleInfo {
   id: string;
   title: string;
+  name: string;
   width: number;
   height: number;
+  noExport?: boolean;
+}
+
+export interface StoryGroup {
+  anchor: PageArticleInfo;
+  recuadros: PageArticleInfo[];
+}
+
+export interface PageArticleGrouping {
+  groups: StoryGroup[];
+  standalone: PageArticleInfo[];
 }
 
 // Detecta el tipo de URL y extrae los parámetros necesarios
@@ -152,53 +214,76 @@ function processMacros(text: string): string {
   return processed;
 }
 
-// Limpia tags XML propios de El Mercurio
-function cleanMercurioTags(text: string): string {
-  return text
-    .replace(/<\/?head_deck>/gi, '')
-    .replace(/<\/?byline>/gi, '')
-    .replace(/<\/?byline_credit>/gi, ' - ')
-    .replace(/<\/?body>/gi, '')
-    .replace(/<\/?P>/gi, '')
-    .trim();
-}
-
 // Extrae desde la API JSON de digital.elmercurio.com
 async function extractFromDigitalJson(date: string, articleId: string): Promise<Article> {
   const jsonUrl = `https://digital.elmercurio.com/${date}/content/articles/${articleId}.json`;
-
   const response = await fetch(jsonUrl, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
+  return extractFromDigitalJsonResponse(await response.json(), date, articleId);
+}
 
-  const data: MercurioJsonArticle = await response.json();
-
-  let title = data.title || data.head;
-  if (!title) {
+function extractFromDigitalJsonResponse(
+  data: MercurioJsonArticle,
+  date: string,
+  articleId: string,
+): Article {
+  // Title: prefer `title`, fall back to `head`. Sanitize either way.
+  const rawTitle = data.title || data.head;
+  if (!rawTitle) {
     throw new Error('Artículo sin título');
   }
-  // Limpiar tags de highlight
-  title = title.replace(/<\/?highlight>/gi, '').trim();
+  const title = sanitizeAndStripMercurio(rawTitle);
 
-  let body = data.body || '';
-  body = body
-    .replace(/<\/?body>/gi, '')
-    .replace(/<P>/gi, '<p>')
-    .replace(/<\/P>/gi, '</p>')
-    .replace(/<subhead>/gi, '<h3>')
-    .replace(/<\/subhead>/gi, '</h3>')
-    .replace(/<italic>/gi, '<i>')
-    .replace(/<\/italic>/gi, '</i>')
-    .replace(/<bold>/gi, '<b>')
-    .replace(/<\/bold>/gi, '</b>')
-    .replace(/<byline>.*?<\/byline>/gis, '');
+  // Kicker (volada/antetítulo)
+  const kicker = data.head_label
+    ? sanitizeAndStripMercurio(data.head_label)
+    : undefined;
+
+  // Subtitle (bajada)
+  const subtitle = data.head_deck
+    ? sanitizeAndStripMercurio(data.head_deck)
+    : undefined;
+
+  // Author
+  const author = data.byline
+    ? sanitizeAndStripMercurio(data.byline).replace(/^Por\s+/i, '').trim()
+    : undefined;
+
+  // Quotes block (rendered as blockquotes prepended to body)
+  const quoteBlocks = (data.quotes || [])
+    .map(q => sanitizeMercurioMarkup(q.quote || ''))
+    .filter(Boolean)
+    .map(q => `<blockquote>${q}</blockquote>`)
+    .join('\n');
+
+  // Body sanitized
+  const sanitizedBody = sanitizeMercurioMarkup(data.body || '');
+  const body = quoteBlocks
+    ? `${quoteBlocks}\n${sanitizedBody}`
+    : sanitizedBody;
+
+  // Images: filter by noExport=false AND infographic=false
+  // (DO NOT filter by name starting with NO_WEB_; main article photos use that prefix)
+  const images = (data.images || [])
+    .filter(img => img.noExport === false && img.infographic === false && img.path)
+    .map(img => {
+      const url = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${img.path}`;
+      let caption = img.caption ? sanitizeAndStripMercurio(img.caption) : undefined;
+      if (img.credits) {
+        caption = caption ? `${caption} (Foto: ${img.credits})` : `Foto: ${img.credits}`;
+      }
+      return { url, caption };
+    });
 
   return {
     title,
-    subtitle: data.head_deck ? cleanMercurioTags(data.head_deck) : undefined,
-    author: data.byline ? cleanMercurioTags(data.byline) : undefined,
+    kicker,
+    subtitle,
+    author,
     body,
+    images: images.length > 0 ? images : undefined,
     url: `https://digital.elmercurio.com/${date}/content/articles/${articleId}`,
     source: 'elmercurio',
   };
@@ -408,6 +493,7 @@ export function isPageUrl(url: string): boolean {
 export async function fetchPageArticles(url: string): Promise<{
   articles: PageArticleInfo[];
   date: string;
+  pageId: string;
   sectionName: string;
   page: number;
 } | null> {
@@ -422,19 +508,21 @@ export async function fetchPageArticles(url: string): Promise<{
 
   const data = await response.json();
 
-  // Filtrar artículos que no son para web (name contiene NO_WEB)
   const articles: PageArticleInfo[] = (data.articles || [])
-    .filter((a: any) => !a.name?.includes('NO_WEB') && a.id && a.title)
     .map((a: any) => ({
       id: a.id,
-      title: (a.title || '').replace(/<\/?highlight>/gi, '').trim(),
+      title: (a.title || '').toString(),
+      name: a.name || '',
       width: a.width || 0,
       height: a.height || 0,
-    }));
+      noExport: a.noExport === true,
+    }))
+    .filter((a: PageArticleInfo) => a.id && a.title);
 
   return {
     articles,
     date: parsed.date,
+    pageId: parsed.pageId,
     sectionName: data.category_name || data.section_name || '',
     page: data.page || 0,
   };
@@ -470,4 +558,192 @@ export async function extract(url: string): Promise<Article> {
     default:
       throw new Error('Tipo de URL no soportado');
   }
+}
+
+// Strips all HTML tags, preserving text content. Used after sanitizeMercurioMarkup
+// for fields rendered as plain text (title, kicker, subtitle, author).
+function stripTags(html: string): string {
+  return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Convenience: sanitize El Mercurio markup and strip all tags to plain text.
+export function sanitizeAndStripMercurio(input: string): string {
+  return stripTags(sanitizeMercurioMarkup(input));
+}
+
+export interface ParsedArticleName {
+  topicKey: string | null;       // e.g. "T1" if name starts with T<digits>_
+  isRecuadro: boolean;            // ends in _R<digits>.ART
+  recuadroIndex: number | null;   // the N from _R<N>
+  normalizedKey: string;          // name minus _R<N>.ART and minus second _<digit>_ after T<N>_
+  isValid: boolean;               // true if name ends in .ART (not .AR1 banner etc)
+}
+
+export function parseArticleName(name: string): ParsedArticleName {
+  if (!name || !name.endsWith('.ART')) {
+    return { topicKey: null, isRecuadro: false, recuadroIndex: null, normalizedKey: name, isValid: false };
+  }
+  let stem = name.slice(0, -4); // strip .ART
+
+  const recuadroMatch = stem.match(/_R(\d+)$/);
+  let isRecuadro = false;
+  let recuadroIndex: number | null = null;
+  if (recuadroMatch) {
+    isRecuadro = true;
+    recuadroIndex = parseInt(recuadroMatch[1], 10);
+    stem = stem.slice(0, -recuadroMatch[0].length);
+  }
+
+  const topicMatch = stem.match(/^(T\d+)_/);
+  const topicKey = topicMatch ? topicMatch[1] : null;
+
+  let normalizedKey = stem;
+  if (topicKey) {
+    const positional = normalizedKey.match(/^(T\d+)_(\d+)_(.+)$/);
+    if (positional) {
+      normalizedKey = `${positional[1]}_${positional[3]}`;
+    }
+  }
+
+  return { topicKey, isRecuadro, recuadroIndex, normalizedKey, isValid: true };
+}
+
+export function groupPageArticles(articles: PageArticleInfo[]): PageArticleGrouping {
+  const valid = articles.filter(a => {
+    if (!a.name) return false;
+    if (a.noExport === true) return false;
+    if (a.name.startsWith('NO_WEB_')) return false;
+    if (!parseArticleName(a.name).isValid) return false;
+    return true;
+  });
+
+  const anchors = new Map<string, PageArticleInfo>();
+  const recuadrosByKey = new Map<string, PageArticleInfo[]>();
+
+  for (const a of valid) {
+    const parsed = parseArticleName(a.name);
+    if (parsed.isRecuadro) {
+      const arr = recuadrosByKey.get(parsed.normalizedKey) || [];
+      arr.push(a);
+      recuadrosByKey.set(parsed.normalizedKey, arr);
+    } else {
+      anchors.set(parsed.normalizedKey, a);
+    }
+  }
+
+  const groups: StoryGroup[] = [];
+  const consumedAnchorKeys = new Set<string>();
+  const looseStandalones: PageArticleInfo[] = [];
+
+  for (const [key, recuadros] of recuadrosByKey) {
+    const anchor = anchors.get(key);
+    if (anchor) {
+      const sorted = recuadros.slice().sort((a, b) => {
+        const ai = parseArticleName(a.name).recuadroIndex || 0;
+        const bi = parseArticleName(b.name).recuadroIndex || 0;
+        return ai - bi;
+      });
+      groups.push({ anchor, recuadros: sorted });
+      consumedAnchorKeys.add(key);
+    } else {
+      looseStandalones.push(...recuadros);
+    }
+  }
+
+  for (const [key, anchor] of anchors) {
+    if (!consumedAnchorKeys.has(key)) {
+      looseStandalones.push(anchor);
+    }
+  }
+
+  const orderIndex = new Map(articles.map((a, i) => [a.id, i]));
+  looseStandalones.sort((a, b) => (orderIndex.get(a.id) || 0) - (orderIndex.get(b.id) || 0));
+
+  return { groups, standalone: looseStandalones };
+}
+
+export async function extractStoryGroup(
+  group: StoryGroup,
+  date: string,
+  pageId: string,
+): Promise<Article> {
+  const fetchOne = async (id: string): Promise<Article> => {
+    const url = `https://digital.elmercurio.com/${date}/content/articles/${id}.json`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${id}`);
+    return extractFromDigitalJsonResponse(await r.json() as MercurioJsonArticle, date, id);
+  };
+
+  const [anchorRes, ...recuadroResults] = await Promise.allSettled([
+    fetchOne(group.anchor.id),
+    ...group.recuadros.map(r => fetchOne(r.id)),
+  ]);
+
+  if (anchorRes.status === 'rejected') {
+    throw new Error(`No se pudo obtener el ancla del reportaje: ${anchorRes.reason}`);
+  }
+  const anchor = anchorRes.value;
+
+  let combinedBody = anchor.body;
+
+  for (let i = 0; i < group.recuadros.length; i++) {
+    const recuadroMeta = group.recuadros[i];
+    const res = recuadroResults[i];
+    if (res.status === 'fulfilled') {
+      const r = res.value;
+      const titleHtml = r.title ? `<h3>${escapeHtmlMinimal(r.title)}</h3>` : '';
+      combinedBody += `\n<aside>${titleHtml}${r.body}</aside>`;
+    } else {
+      console.error(JSON.stringify({
+        event: 'story_group_recuadro_failed',
+        anchorId: group.anchor.id,
+        recuadroId: recuadroMeta.id,
+        error: String(res.reason),
+        timestamp: new Date().toISOString(),
+      }));
+      const titleClean = sanitizeAndStripMercurio(recuadroMeta.title);
+      combinedBody += `\n<aside><p><i>(Recuadro «${escapeHtmlMinimal(titleClean)}» no disponible)</i></p></aside>`;
+    }
+  }
+
+  const coverImage = {
+    url: `https://digital.elmercurio.com/${date}/content/pages/img/mid/${pageId}.jpg`,
+  };
+
+  const sizeBytes = Buffer.byteLength(combinedBody, 'utf8');
+  if (sizeBytes > 50_000) {
+    console.error(JSON.stringify({
+      event: 'telegraph_payload_size_warning',
+      sizeBytes,
+      anchorId: group.anchor.id,
+      recuadroCount: group.recuadros.length,
+      timestamp: new Date().toISOString(),
+    }));
+    let truncated = false;
+    while (Buffer.byteLength(combinedBody, 'utf8') > 45_000) {
+      const lastAside = combinedBody.lastIndexOf('<aside>');
+      if (lastAside === -1) break;
+      combinedBody = combinedBody.slice(0, lastAside).trimEnd();
+      truncated = true;
+    }
+    if (truncated) {
+      combinedBody += '\n<p><i>(Continúa en el original →)</i></p>';
+    }
+  }
+
+  return {
+    title: anchor.title,
+    kicker: anchor.kicker,
+    subtitle: anchor.subtitle,
+    author: anchor.author,
+    body: combinedBody,
+    images: anchor.images,
+    coverImage,
+    url: `https://digital.elmercurio.com/${date}/content/articles/${group.anchor.id}`,
+    source: 'elmercurio',
+  };
+}
+
+function escapeHtmlMinimal(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

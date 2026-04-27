@@ -24,6 +24,19 @@ function parseLunUrl(url: string): LunParams {
   };
 }
 
+const SPANISH_MONTH_ABBR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+export function buildLunPageCoverUrl(fechaIso: string, paginaId: string): string | null {
+  if (!fechaIso || !paginaId) return null;
+  const m = fechaIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [, year, month, day] = m;
+  const monthIdx = parseInt(month, 10) - 1;
+  if (monthIdx < 0 || monthIdx > 11) return null;
+  const abbr = SPANISH_MONTH_ABBR[monthIdx];
+  return `https://images.lun.com/luncontents/NewsPaperPages/${year}/${abbr}/${day}/p_${fechaIso}_pag${paginaId}.webp`;
+}
+
 function buildHomemobUrl(params: LunParams): string {
   return `https://www.lun.com/lunmobileiphone/Homemob.aspx?dt=${params.fecha}&bodyid=${params.bodyId}&SupplementId=${params.supplementId}&PaginaId=${params.paginaId}&NewsId=${params.newsId}`;
 }
@@ -57,6 +70,8 @@ interface ExtractedContent {
   bajada: string | null;
   texto: string | null;
   seccion: string | null;
+  videoUrl: string | null;
+  autor: string | null;
   imagenes: string[];
   newsId: string | null;
   fecha: string | null;
@@ -69,6 +84,8 @@ function extractLunContent(html: string): ExtractedContent {
     bajada: null,
     texto: null,
     seccion: null,
+    videoUrl: null,
+    autor: null,
     imagenes: [],
     newsId: null,
     fecha: null,
@@ -85,6 +102,19 @@ function extractLunContent(html: string): ExtractedContent {
   // Sección from div id="seccion"
   m = html.match(/<div id="seccion">([^<]+)<\/div>/);
   if (m) result.seccion = decodeHtmlEntities(m[1].trim());
+
+  // Autor from div id="autor"
+  m = html.match(/<div id="autor">([^<]+)<\/div>/);
+  if (m) result.autor = decodeHtmlEntities(m[1].trim());
+
+  // Video URL from div id="video"
+  m = html.match(/<div id="video">([^<]+)<\/div>/);
+  if (m) {
+    const filename = m[1].trim();
+    if (filename) {
+      result.videoUrl = `https://images.lun.com/luncontents/Videos/${filename}`;
+    }
+  }
 
   // Fecha from div id="fecha_publicacion_av"
   m = html.match(/<div id="fecha_publicacion_av">([^<]+)<\/div>/);
@@ -180,6 +210,9 @@ export async function extract(url: string): Promise<Article> {
 
   // Construir body con subtitulo y bajada si existen
   let body = '';
+  if (content.videoUrl) {
+    body += `<figure><video src="${content.videoUrl}"></video></figure>\n`;
+  }
   if (content.subtitulo) {
     body += `<p><strong>${content.subtitulo}</strong></p>\n`;
   }
@@ -204,12 +237,18 @@ export async function extract(url: string): Promise<Article> {
     url: imgUrl,
   }));
 
+  // Page cover image (visual social card)
+  const coverUrl = buildLunPageCoverUrl(params.fecha, params.paginaId);
+  const pageCover = coverUrl ? { url: coverUrl } : undefined;
+
   return {
     title: content.titulo,
     subtitle: content.bajada || undefined,
+    author: content.autor || undefined,
     date: content.fecha || params.fecha || undefined,
     body,
     images: images.length > 0 ? images : undefined,
+    coverImage: pageCover,
     url,
     source: 'lun',
   };

@@ -1,0 +1,108 @@
+{
+    "siblings": {
+        "firstPage": {
+            "permalink": "page/B/3A4KSPGH/",
+            "page": 1,
+            "id": "3A4KSPGH"
+        },
+        "lastPage": {
+            "permalink": "page/B/3A4KSPJP/",
+            "page": 12,
+            "id": "3A4KSPJP"
+        },
+        "nextPage": {
+            "permalink": "page/C/3A4KSPJQ/",
+            "page": 1,
+            "id": "3A4KSPJQ"
+        },
+        "prevPage": {
+            "permalink": "page/B/BS4L0B3J/",
+            "page": 11,
+            "id": "BS4L0B3J"
+        }
+    },
+    "permalink": "page/B/12",
+    "kind": "Page",
+    "section_id": "B",
+    "media": {
+        "image_pdf": "pages/img/pdf/3A4KSPJP.pdf",
+        "image_big": "pages/img/big/3A4KSPJP.jpg",
+        "image_tmb": "pages/img/tmb/3A4KSPJP.jpg",
+        "image_mid": "pages/img/mid/3A4KSPJP.jpg"
+    },
+    "type": "EditorialOnly",
+    "pubdate": "25-04-2026",
+    "category_name": "Economía y Negocios",
+    "category_slug": "economia_y_negocios",
+    "product_name": "El_Mercurio",
+    "section_name": "B",
+    "ads": [
+    ],
+    "width": 395,
+    "id": "3A4KSPJP",
+    "page": 12,
+    "articles": [
+        {
+            "width": 370,
+            "height": 642,
+            "posX": 13,
+            "posY": 71,
+            "id": "4H4L0L3D",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Empresas_y_Negocios",
+            "noExport": false,
+            "name": "T1_EyN_B12_2504_Büchi.ART",
+            "title": "<bold>“Confío más en el mercado </bold> que en los reguladores”"
+        },
+        {
+            "width": 79,
+            "height": 498,
+            "posX": 298,
+            "posY": 93,
+            "id": "C14L0L7D",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "T1_2_EyN_B12_2504_Büchi_R1.ART",
+            "title": "<highlight>“La actitud de WOM de hoy </highlight> versus el WOMde entrada es bien distinta”"
+        },
+        {
+            "width": 68,
+            "height": 187,
+            "posX": 101,
+            "posY": 345,
+            "id": "C14L0L88",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "T1_4_EyN_B12_2504_Büchi_R3.ART",
+            "title": "<highlight>“Los <italic>ratios</italic> e inversión </highlight> son similares entre Chile y Perú”"
+        },
+        {
+            "width": 110,
+            "height": 93,
+            "posX": 179,
+            "posY": 399,
+            "id": "C14L0L7B",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "T1_5_EyN_B12_2504_Büchi_R4.ART",
+            "title": "<highlight>Una vida profesional</highlight>  con Hurtado"
+        },
+        {
+            "width": 276,
+            "height": 97,
+            "posX": 102,
+            "posY": 615,
+            "id": "C14L0L7F",
+            "blMapWord1": "Economía",
+            "blMapWord2": "Opinión",
+            "noExport": false,
+            "name": "T1_3_EyN_B12_2504_Büchi_R2.ART",
+            "title": "<highlight>“Telefónica...</highlight>  pasó varios años un poquito a la deriva”"
+        }
+    ],
+    "category_id": "economia_y_negocios",
+    "height": 740
+}
