@@ -312,6 +312,11 @@ function htmlToNodes(html: string): TelegraphNode[] {
 export function articleToNodes(article: Article): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
 
+  // Kicker (antetítulo) como primer párrafo en negrita
+  if (article.kicker) {
+    nodes.push({ tag: 'p', children: [{ tag: 'b', children: [decodeEntities(article.kicker)] }] });
+  }
+
   // Subtítulo como blockquote
   if (article.subtitle) {
     nodes.push({ tag: 'blockquote', children: [decodeEntities(article.subtitle)] });
