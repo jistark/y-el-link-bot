@@ -70,6 +70,7 @@ interface ExtractedContent {
   bajada: string | null;
   texto: string | null;
   seccion: string | null;
+  autor: string | null;
   imagenes: string[];
   newsId: string | null;
   fecha: string | null;
@@ -82,6 +83,7 @@ function extractLunContent(html: string): ExtractedContent {
     bajada: null,
     texto: null,
     seccion: null,
+    autor: null,
     imagenes: [],
     newsId: null,
     fecha: null,
@@ -98,6 +100,10 @@ function extractLunContent(html: string): ExtractedContent {
   // Sección from div id="seccion"
   m = html.match(/<div id="seccion">([^<]+)<\/div>/);
   if (m) result.seccion = decodeHtmlEntities(m[1].trim());
+
+  // Autor from div id="autor"
+  m = html.match(/<div id="autor">([^<]+)<\/div>/);
+  if (m) result.autor = decodeHtmlEntities(m[1].trim());
 
   // Fecha from div id="fecha_publicacion_av"
   m = html.match(/<div id="fecha_publicacion_av">([^<]+)<\/div>/);
@@ -217,12 +223,18 @@ export async function extract(url: string): Promise<Article> {
     url: imgUrl,
   }));
 
+  // Page cover image (visual social card)
+  const coverUrl = buildLunPageCoverUrl(params.fecha, params.paginaId);
+  const pageCover = coverUrl ? { url: coverUrl } : undefined;
+
   return {
     title: content.titulo,
     subtitle: content.bajada || undefined,
+    author: content.autor || undefined,
     date: content.fecha || params.fecha || undefined,
     body,
     images: images.length > 0 ? images : undefined,
+    coverImage: pageCover,
     url,
     source: 'lun',
   };
