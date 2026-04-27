@@ -24,6 +24,19 @@ function parseLunUrl(url: string): LunParams {
   };
 }
 
+const SPANISH_MONTH_ABBR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+export function buildLunPageCoverUrl(fechaIso: string, paginaId: string): string | null {
+  if (!fechaIso || !paginaId) return null;
+  const m = fechaIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [, year, month, day] = m;
+  const monthIdx = parseInt(month, 10) - 1;
+  if (monthIdx < 0 || monthIdx > 11) return null;
+  const abbr = SPANISH_MONTH_ABBR[monthIdx];
+  return `https://images.lun.com/luncontents/NewsPaperPages/${year}/${abbr}/${day}/p_${fechaIso}_pag${paginaId}.webp`;
+}
+
 function buildHomemobUrl(params: LunParams): string {
   return `https://www.lun.com/lunmobileiphone/Homemob.aspx?dt=${params.fecha}&bodyid=${params.bodyId}&SupplementId=${params.supplementId}&PaginaId=${params.paginaId}&NewsId=${params.newsId}`;
 }
