@@ -551,3 +551,40 @@ function stripTags(html: string): string {
 export function sanitizeAndStripMercurio(input: string): string {
   return stripTags(sanitizeMercurioMarkup(input));
 }
+
+export interface ParsedArticleName {
+  topicKey: string | null;       // e.g. "T1" if name starts with T<digits>_
+  isRecuadro: boolean;            // ends in _R<digits>.ART
+  recuadroIndex: number | null;   // the N from _R<N>
+  normalizedKey: string;          // name minus _R<N>.ART and minus second _<digit>_ after T<N>_
+  isValid: boolean;               // true if name ends in .ART (not .AR1 banner etc)
+}
+
+export function parseArticleName(name: string): ParsedArticleName {
+  if (!name || !name.endsWith('.ART')) {
+    return { topicKey: null, isRecuadro: false, recuadroIndex: null, normalizedKey: name, isValid: false };
+  }
+  let stem = name.slice(0, -4); // strip .ART
+
+  const recuadroMatch = stem.match(/_R(\d+)$/);
+  let isRecuadro = false;
+  let recuadroIndex: number | null = null;
+  if (recuadroMatch) {
+    isRecuadro = true;
+    recuadroIndex = parseInt(recuadroMatch[1], 10);
+    stem = stem.slice(0, -recuadroMatch[0].length);
+  }
+
+  const topicMatch = stem.match(/^(T\d+)_/);
+  const topicKey = topicMatch ? topicMatch[1] : null;
+
+  let normalizedKey = stem;
+  if (topicKey) {
+    const positional = normalizedKey.match(/^(T\d+)_(\d+)_(.+)$/);
+    if (positional) {
+      normalizedKey = `${positional[1]}_${positional[3]}`;
+    }
+  }
+
+  return { topicKey, isRecuadro, recuadroIndex, normalizedKey, isValid: true };
+}
