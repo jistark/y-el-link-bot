@@ -101,6 +101,12 @@ import {
   type PageArticleInfo,
   type StoryGroup,
 } from './extractors/elmercurio.js';
+import {
+  fetchLunPageArticles,
+  extractLunByNewsId,
+  extractLunPageGroup,
+  type LunPageArticleInfo,
+} from './extractors/lun.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import {
@@ -199,6 +205,27 @@ interface PendingPageSelection {
 
 const pendingPages = new Map<number, PendingPageSelection & { createdAt: number }>();
 
+// Pendientes de selección de artículo en página (LUN papel digital)
+interface PendingLunSelection {
+  articles: LunPageArticleInfo[];
+  fecha: string;
+  paginaId: string;
+  originalUrl: string;
+  userId: number;
+  username?: string;
+  firstName: string;
+  chatId: number;
+  botMessageId: number;
+  originalMessageId: number;
+  originalText: string;
+  replyToMessageId?: number;
+  threadId?: number;
+  replyTargetThreadId?: number;
+  replyTargetIsBot?: boolean;
+}
+
+const pendingLunPages = new Map<number, PendingLunSelection & { createdAt: number }>();
+
 const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
 // Mapa de Telegraph path → URL original (para regenerar artículos)
@@ -238,6 +265,9 @@ setInterval(() => {
   // Limpiar selecciones de página expiradas (10 min TTL)
   for (const [key, sel] of pendingPages) {
     if (now - sel.createdAt > 10 * 60 * 1000) pendingPages.delete(key);
+  }
+  for (const [key, sel] of pendingLunPages) {
+    if (now - sel.createdAt > 10 * 60 * 1000) pendingLunPages.delete(key);
   }
   // Limpiar pathToUrl: eliminar entries cuyo path no esté en cache
   if (pathToUrl.size > 500) {
@@ -1349,6 +1379,64 @@ export function createBot(token: string): Bot {
         continue;
       }
 
+      // LUN: páginas con múltiples artículos (selector inline)
+      if (source === 'lun') {
+        try {
+          const lunPage = await fetchLunPageArticles(url);
+          if (lunPage && lunPage.articles.length >= 2) {
+            let text = `📰 <b>LUN</b> — Pág. ${lunPage.paginaId}\n\n`;
+            text += 'Elige el artículo:\n\n';
+            const keyboard = new InlineKeyboard();
+
+            const partsCount = lunPage.articles.length;
+            text += `📋 Página completa (${partsCount} notas)\n`;
+            keyboard.text('📋 Toda', 'lunpage:g:0').row();
+
+            const maxArticles = Math.min(lunPage.articles.length, NUMBER_EMOJIS.length);
+            for (let i = 0; i < maxArticles; i++) {
+              const a = lunPage.articles[i];
+              text += `${NUMBER_EMOJIS[i]} ${escapeHtml(a.title)}\n`;
+              keyboard.text(NUMBER_EMOJIS[i], `lunpage:a:${i}`);
+              if ((i + 1) % 5 === 0) keyboard.row();
+            }
+
+            const botMessage = await ctx.reply(text, {
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+              reply_to_message_id: ctx.message.message_id,
+            });
+
+            pendingLunPages.set(botMessage.message_id, {
+              articles: lunPage.articles.slice(0, maxArticles),
+              fecha: lunPage.fecha,
+              paginaId: lunPage.paginaId,
+              originalUrl: url,
+              userId: ctx.from?.id || 0,
+              username: ctx.from?.username,
+              firstName: ctx.from?.first_name || 'Usuario',
+              chatId: ctx.chat.id,
+              botMessageId: botMessage.message_id,
+              originalMessageId: ctx.message.message_id,
+              originalText: ctx.message.text,
+              replyToMessageId: ctx.message.reply_to_message?.message_id,
+              threadId: ctx.message.message_thread_id,
+              replyTargetThreadId: ctx.message.reply_to_message?.message_thread_id,
+              replyTargetIsBot: ctx.message.reply_to_message?.from?.is_bot ?? false,
+              createdAt: Date.now(),
+            });
+            continue;
+          }
+          // Single-article LUN URL: fall through to normal extractor pipeline.
+        } catch (error) {
+          console.error(JSON.stringify({
+            event: 'lun_page_selection_error', url,
+            error: error instanceof Error ? error.message : String(error),
+            timestamp: new Date().toISOString(),
+          }));
+          // Fall through to normal pipeline
+        }
+      }
+
       const pendingId = `${ctx.chat.id}:${ctx.message.message_id}:${url}`;
 
       // Revisar cache
@@ -2023,6 +2111,147 @@ export function createBot(token: string): Bot {
         }));
         try {
           await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '❌ No pude reconstruir el artículo.');
+          scheduleDelete(ctx.api, sel.chatId, sel.botMessageId);
+        } catch {}
+      }
+      return;
+    }
+
+    // Selección de artículo en página de LUN
+    if (data.startsWith('lunpage:')) {
+      const messageId = ctx.callbackQuery.message?.message_id;
+      if (!messageId) {
+        await ctx.answerCallbackQuery({ text: 'Error interno' });
+        return;
+      }
+      const sel = pendingLunPages.get(messageId);
+      if (!sel) {
+        await ctx.answerCallbackQuery({ text: 'Selección expirada. Pega la URL de nuevo.', show_alert: true });
+        return;
+      }
+
+      const isOwner = ctx.from?.id === sel.userId;
+      let isAdmin = false;
+      if (!isOwner && ctx.chat && ctx.from?.id) {
+        try {
+          const member = await ctx.api.getChatMember(ctx.chat.id, ctx.from.id);
+          isAdmin = ['creator', 'administrator'].includes(member.status);
+        } catch {}
+      }
+      if (!isOwner && !isAdmin) {
+        await ctx.answerCallbackQuery({ text: 'Solo quien pegó la URL puede elegir' });
+        return;
+      }
+
+      const m = data.match(/^lunpage:([ga]):(\d+)$/);
+      if (!m) {
+        await ctx.answerCallbackQuery({ text: 'Selección no válida' });
+        return;
+      }
+      const kind = m[1];
+      const idx = parseInt(m[2], 10);
+
+      let extracted: import('./types.js').Article;
+      let cacheKey: string;
+
+      try {
+        if (kind === 'g') {
+          pendingLunPages.delete(messageId);
+          await ctx.answerCallbackQuery({ text: '⏳ Procesando página...' });
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '⏳ Procesando página...');
+          extracted = await Promise.race([
+            extractLunPageGroup(sel.articles, sel.fecha, sel.paginaId, sel.originalUrl),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30_000)),
+          ]);
+          cacheKey = `${sel.originalUrl}#lunpage:all`;
+        } else {
+          const article = sel.articles[idx];
+          if (!article) {
+            await ctx.answerCallbackQuery({ text: 'Artículo no válido' });
+            return;
+          }
+          pendingLunPages.delete(messageId);
+          await ctx.answerCallbackQuery({ text: '⏳ Procesando...' });
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '⏳ Procesando artículo...');
+          extracted = await Promise.race([
+            extractLunByNewsId(article.newsId, sel.fecha, sel.paginaId, sel.originalUrl),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30_000)),
+          ]);
+          cacheKey = `${sel.originalUrl}#lunpage:${article.newsId}`;
+        }
+
+        extracted.url = sel.originalUrl;
+        const result = await createPage(extracted);
+        cache.set(cacheKey, { result, expires: Date.now() + TTL });
+        pathToUrl.set(result.path, sel.originalUrl);
+
+        const keyboard = createActionKeyboard(result.path, sel.userId, sel.originalUrl);
+        const mention = sel.username ? `@${sel.username}` :
+          `<a href="tg://user?id=${sel.userId}">${escapeHtml(sel.firstName)}</a>`;
+        const extraText = getTextWithoutUrls(sel.originalText);
+        const messageText = extraText
+          ? `${mention}: ${escapeHtml(extraText)}\n\n${result.url}`
+          : `${mention} compartió:\n${result.url}`;
+
+        if (sel.replyToMessageId) {
+          try { await ctx.api.deleteMessage(sel.chatId, sel.botMessageId); } catch {}
+          try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
+
+          const sameId = sel.replyToMessageId === sel.threadId;
+          const threadMismatch = sel.threadId != null &&
+            sel.replyTargetThreadId !== sel.threadId;
+          const targetIsBot = sel.replyTargetIsBot === true;
+          const dropReplyTo = sameId || threadMismatch || targetIsBot;
+          const threadOpts = sel.threadId ? { message_thread_id: sel.threadId } : {};
+          const replyOpts = dropReplyTo
+            ? {} : { reply_to_message_id: sel.replyToMessageId };
+
+          if (threadMismatch || targetIsBot) {
+            console.log(JSON.stringify({
+              event: 'thread_mismatch', action: 'drop_reply_to',
+              reason: targetIsBot ? 'target_is_bot' : 'thread_mismatch',
+              currentThread: sel.threadId,
+              replyTargetThread: sel.replyTargetThreadId,
+              replyTargetIsBot: sel.replyTargetIsBot,
+              replyToMessageId: sel.replyToMessageId,
+              chatId: sel.chatId,
+              timestamp: new Date().toISOString(),
+            }));
+          }
+
+          await safeSendMessage(ctx.api, sel.chatId, messageText, {
+            ...threadOpts,
+            ...replyOpts,
+            parse_mode: 'HTML',
+            reply_markup: keyboard,
+            link_preview_options: { is_disabled: false },
+          });
+        } else {
+          try { await ctx.api.deleteMessage(sel.chatId, sel.originalMessageId); } catch {}
+          try {
+            await ctx.api.editMessageText(sel.chatId, sel.botMessageId, messageText, {
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+              link_preview_options: { is_disabled: false },
+            });
+          } catch {
+            await safeSendMessage(ctx.api, sel.chatId, messageText, {
+              message_thread_id: sel.threadId,
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+              link_preview_options: { is_disabled: false },
+            });
+          }
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: 'lun_page_extraction_error',
+          url: sel.originalUrl, kind, idx,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }));
+        try {
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '❌ No pude extraer la página.');
           scheduleDelete(ctx.api, sel.chatId, sel.botMessageId);
         } catch {}
       }

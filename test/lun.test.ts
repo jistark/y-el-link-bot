@@ -49,3 +49,29 @@ describe('LUN video extraction', () => {
     expect(m).toBeNull();
   });
 });
+
+describe('LUN multi-article detection', () => {
+  it('matches multiple NewsIDRepeater values in document order', () => {
+    const html = `
+      <script>var NewsID = '0'; var NewsIDRepeater = '561601';</script>
+      <div id="titulo">Título 1</div>
+      <script>var NewsID = '0'; var NewsIDRepeater = '561602';</script>
+      <div id="titulo">Título 2</div>
+    `;
+    const newsIds = Array.from(html.matchAll(/var NewsIDRepeater\s*=\s*'(\d+)'/g), m => m[1]);
+    expect(newsIds).toEqual(['561601', '561602']);
+    const titles = Array.from(html.matchAll(/<div id="titulo">([^<]+)<\/div>/g), m => m[1]);
+    expect(titles).toEqual(['Título 1', 'Título 2']);
+  });
+
+  it('dedupes repeated NewsIDRepeater values (single-article page)', () => {
+    const html = `var NewsIDRepeater = '561601'; var NewsIDRepeater = '561601';`;
+    const matches = Array.from(html.matchAll(/var NewsIDRepeater\s*=\s*'(\d+)'/g), m => m[1]);
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const id of matches) {
+      if (!seen.has(id)) { seen.add(id); unique.push(id); }
+    }
+    expect(unique).toEqual(['561601']);
+  });
+});

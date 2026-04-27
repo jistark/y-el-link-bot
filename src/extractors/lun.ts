@@ -8,6 +8,19 @@ interface LunParams {
   bodyId: string;
 }
 
+export interface LunPageArticleInfo {
+  newsId: string;
+  title: string;
+}
+
+export interface LunPageData {
+  articles: LunPageArticleInfo[];
+  fecha: string;
+  paginaId: string;
+}
+
+const LUN_TIMEOUT_MS = 15_000;
+
 function parseLunUrl(url: string): LunParams {
   const params: Record<string, string> = {};
   const matches = url.matchAll(/[?&](\w+)=([^&]+)/gi);
@@ -163,37 +176,42 @@ function extractLunContent(html: string): ExtractedContent {
   return result;
 }
 
-export async function extract(url: string): Promise<Article> {
+export async function fetchLunPageArticles(url: string): Promise<LunPageData | null> {
   const params = parseLunUrl(url);
+  if (!params.fecha || !params.paginaId) return null;
 
-  // Si es URL desktop (no tiene NewsID), primero obtener el NewsID
-  if (!params.newsId) {
-    const desktopResponse = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!desktopResponse.ok) {
-      throw new Error(`Error al obtener página desktop: ${desktopResponse.status}`);
+  const response = await fetch(url, { signal: AbortSignal.timeout(LUN_TIMEOUT_MS) });
+  if (!response.ok) return null;
+  const buffer = await response.arrayBuffer();
+  const html = new TextDecoder('iso-8859-1').decode(buffer);
+
+  // All NewsIDRepeater values in order, dedupe preserving first-seen order
+  const newsIdMatches = Array.from(html.matchAll(/var NewsIDRepeater\s*=\s*'(\d+)'/g), m => m[1]);
+  const seen = new Set<string>();
+  const uniqueNewsIds: string[] = [];
+  for (const id of newsIdMatches) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      uniqueNewsIds.push(id);
     }
-    // LUN servers return ISO-8859-1 encoded content
-    const desktopBuffer = await desktopResponse.arrayBuffer();
-    const desktopDecoder = new TextDecoder('iso-8859-1');
-    const desktopHtml = desktopDecoder.decode(desktopBuffer);
-
-    // Buscar NewsID en JavaScript de la página
-    // Primero intentar NewsIDRepeater (contiene el ID real de la noticia principal)
-    // Si no, intentar NewsID directo
-    const newsIdRepeaterMatch = desktopHtml.match(/var NewsIDRepeater = '(\d+)'/);
-    const newsIdMatch = desktopHtml.match(/var NewsID = '(\d+)'/);
-
-    const foundNewsId = newsIdRepeaterMatch?.[1] || (newsIdMatch?.[1] !== '0' ? newsIdMatch?.[1] : null);
-
-    if (!foundNewsId) {
-      throw new Error('No se pudo obtener NewsID de la página desktop. Esta página no tiene un artículo específico asociado.');
-    }
-    params.newsId = foundNewsId;
   }
+  if (uniqueNewsIds.length === 0) return null;
 
+  // All titles in order. Each article has its own <div id="titulo">.
+  const titles = Array.from(html.matchAll(/<div id="titulo">([^<]+)<\/div>/g), m => decodeHtmlEntities(m[1].trim()));
+
+  const articles: LunPageArticleInfo[] = uniqueNewsIds.map((newsId, i) => ({
+    newsId,
+    title: titles[i] || `Noticia ${i + 1}`,
+  }));
+
+  return { articles, fecha: params.fecha, paginaId: params.paginaId };
+}
+
+async function extractLunCore(params: LunParams, originalUrl: string): Promise<Article> {
   // Construir URL de Homemob.aspx y obtener contenido
   const homemobUrl = buildHomemobUrl(params);
-  const response = await fetch(homemobUrl, { signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(homemobUrl, { signal: AbortSignal.timeout(LUN_TIMEOUT_MS) });
   if (!response.ok) {
     throw new Error(`Error al obtener contenido: ${response.status}`);
   }
@@ -237,9 +255,21 @@ export async function extract(url: string): Promise<Article> {
     url: imgUrl,
   }));
 
-  // Page cover image (visual social card)
-  const coverUrl = buildLunPageCoverUrl(params.fecha, params.paginaId);
-  const pageCover = coverUrl ? { url: coverUrl } : undefined;
+  // Cover image priority:
+  // - If body has images, use first body image as implicit cover (og:image
+  //   becomes the first <img> in the document). Append printed-page edition
+  //   as a footer figure.
+  // - If no body images, fall back to printed-page image as the cover.
+  const pageCoverUrl = buildLunPageCoverUrl(params.fecha, params.paginaId);
+  let coverImage: Article['coverImage'];
+  if (images.length > 0) {
+    coverImage = undefined;
+    if (pageCoverUrl) {
+      body += `<figure><img src="${pageCoverUrl}"><figcaption>Edición impresa</figcaption></figure>\n`;
+    }
+  } else {
+    coverImage = pageCoverUrl ? { url: pageCoverUrl } : undefined;
+  }
 
   return {
     title: content.titulo,
@@ -248,8 +278,105 @@ export async function extract(url: string): Promise<Article> {
     date: content.fecha || params.fecha || undefined,
     body,
     images: images.length > 0 ? images : undefined,
-    coverImage: pageCover,
-    url,
+    coverImage,
+    url: originalUrl,
     source: 'lun',
   };
+}
+
+export async function extractLunByNewsId(
+  newsId: string,
+  fecha: string,
+  paginaId: string,
+  originalUrl: string,
+): Promise<Article> {
+  return extractLunCore(
+    { fecha, newsId, paginaId, supplementId: '0', bodyId: '0' },
+    originalUrl,
+  );
+}
+
+export async function extractLunPageGroup(
+  pageArticles: LunPageArticleInfo[],
+  fecha: string,
+  paginaId: string,
+  originalUrl: string,
+): Promise<Article> {
+  const results = await Promise.allSettled(
+    pageArticles.map(a => extractLunByNewsId(a.newsId, fecha, paginaId, originalUrl)),
+  );
+  const fulfilled = results
+    .map((r, i) => ({ r, info: pageArticles[i] }))
+    .filter(x => x.r.status === 'fulfilled') as Array<{
+      r: PromiseFulfilledResult<Article>;
+      info: LunPageArticleInfo;
+    }>;
+  if (fulfilled.length === 0) throw new Error('Ningún artículo de la página pudo extraerse');
+
+  // Log failures
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].status === 'rejected') {
+      console.error(JSON.stringify({
+        event: 'lun_page_group_article_failed',
+        newsId: pageArticles[i].newsId,
+        error: String((results[i] as PromiseRejectedResult).reason),
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  }
+
+  const first = fulfilled[0].r.value;
+  let combinedBody = first.body;
+  let combinedImages = first.images || [];
+
+  for (let i = 1; i < fulfilled.length; i++) {
+    const r = fulfilled[i].r.value;
+    const titleHtml = `<h3>${r.title}</h3>`;
+    combinedBody += `\n<hr>\n${titleHtml}${r.body}`;
+    if (r.images) combinedImages = combinedImages.concat(r.images);
+  }
+
+  return {
+    title: first.title,
+    subtitle: first.subtitle,
+    author: first.author,
+    date: first.date,
+    body: combinedBody,
+    images: combinedImages.length > 0 ? combinedImages : undefined,
+    coverImage: first.coverImage,
+    url: originalUrl,
+    source: 'lun',
+  };
+}
+
+export async function extract(url: string): Promise<Article> {
+  const params = parseLunUrl(url);
+
+  // Si es URL desktop (no tiene NewsID), primero obtener el NewsID
+  if (!params.newsId) {
+    const desktopResponse = await fetch(url, { signal: AbortSignal.timeout(LUN_TIMEOUT_MS) });
+    if (!desktopResponse.ok) {
+      throw new Error(`Error al obtener página desktop: ${desktopResponse.status}`);
+    }
+    // LUN servers return ISO-8859-1 encoded content
+    const desktopBuffer = await desktopResponse.arrayBuffer();
+    const desktopDecoder = new TextDecoder('iso-8859-1');
+    const desktopHtml = desktopDecoder.decode(desktopBuffer);
+
+    // Buscar NewsID en JavaScript de la página
+    // Primero intentar NewsIDRepeater (contiene el ID real de la noticia principal)
+    // Si no, intentar NewsID directo
+    // Multi-article callers should use fetchLunPageArticles instead.
+    const newsIdRepeaterMatch = desktopHtml.match(/var NewsIDRepeater\s*=\s*'(\d+)'/);
+    const newsIdMatch = desktopHtml.match(/var NewsID\s*=\s*'(\d+)'/);
+
+    const foundNewsId = newsIdRepeaterMatch?.[1] || (newsIdMatch?.[1] !== '0' ? newsIdMatch?.[1] : null);
+
+    if (!foundNewsId) {
+      throw new Error('No se pudo obtener NewsID de la página desktop. Esta página no tiene un artículo específico asociado.');
+    }
+    params.newsId = foundNewsId;
+  }
+
+  return extractLunCore(params, url);
 }
