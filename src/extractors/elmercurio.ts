@@ -1,5 +1,45 @@
 import type { Article } from '../types.js';
 
+// Whitelist-based sanitizer for El Mercurio markup tags.
+// Converts known proprietary tags to standard HTML; strips unknown tags
+// but preserves their text content.
+export function sanitizeMercurioMarkup(input: string): string {
+  if (!input) return '';
+  let s = input;
+
+  // Self-closing first
+  s = s.replace(/<dropcap\s*\/?>/gi, '');
+
+  // Wrappers we want to drop entirely (outer container only — content kept)
+  s = s.replace(/<\/?body>/gi, '');
+  s = s.replace(/<\/?head_label>/gi, '');
+  s = s.replace(/<\/?head_deck>/gi, '');
+  s = s.replace(/<\/?byline>/gi, '');
+  s = s.replace(/<\/?byline_credit>/gi, '');
+  s = s.replace(/<\/?head>/gi, '');
+  s = s.replace(/<\/?quote>/gi, '');
+
+  // Tag substitutions
+  s = s.replace(/<bold_intro>([\s\S]*?)<\/bold_intro>/gi, '<p><b>$1</b></p>');
+  s = s.replace(/<leadin>([\s\S]*?)<\/leadin>/gi, '<b>$1</b>');
+  s = s.replace(/<subhead>([\s\S]*?)<\/subhead>/gi, '<h3>$1</h3>');
+  s = s.replace(/<bold>/gi, '<b>').replace(/<\/bold>/gi, '</b>');
+  s = s.replace(/<italic>/gi, '<i>').replace(/<\/italic>/gi, '</i>');
+  s = s.replace(/<P(\s[^>]*)?>/gi, '<p>').replace(/<\/P>/gi, '</p>');
+
+  // Strip <highlight> wrapper but keep content
+  s = s.replace(/<\/?highlight>/gi, '');
+
+  // Strip any remaining unknown tags (preserve content)
+  // Allowed: p, b, i, h3, h4, blockquote, figure, img, figcaption, br, a, hr, aside
+  s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9_-]*)(\s[^>]*)?>/g, (m, tag) => {
+    const allowed = new Set(['p', 'b', 'i', 'h3', 'h4', 'blockquote', 'figure', 'img', 'figcaption', 'br', 'a', 'hr', 'aside', 'em', 'strong']);
+    return allowed.has(tag.toLowerCase()) ? m : '';
+  });
+
+  return s.trim();
+}
+
 // Respuesta de la API JSON de digital.elmercurio.com
 interface MercurioJsonArticle {
   title?: string;
