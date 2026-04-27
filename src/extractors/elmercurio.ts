@@ -202,17 +202,6 @@ function processMacros(text: string): string {
   return processed;
 }
 
-// Limpia tags XML propios de El Mercurio
-function cleanMercurioTags(text: string): string {
-  return text
-    .replace(/<\/?head_deck>/gi, '')
-    .replace(/<\/?byline>/gi, '')
-    .replace(/<\/?byline_credit>/gi, ' - ')
-    .replace(/<\/?body>/gi, '')
-    .replace(/<\/?P>/gi, '')
-    .trim();
-}
-
 // Extrae desde la API JSON de digital.elmercurio.com
 async function extractFromDigitalJson(date: string, articleId: string): Promise<Article> {
   const jsonUrl = `https://digital.elmercurio.com/${date}/content/articles/${articleId}.json`;
