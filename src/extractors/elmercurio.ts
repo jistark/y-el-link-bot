@@ -715,9 +715,19 @@ export async function extractStoryGroup(
     }
   }
 
-  const coverImage = {
-    url: `https://digital.elmercurio.com/${date}/content/pages/img/mid/${pageId}.jpg`,
-  };
+  // Cover image priority (mirrors LUN behavior):
+  // - If anchor has body images, use first body image as implicit cover
+  //   (og:image becomes the first <img> in the document). Append the
+  //   printed-page edition as a footer figure.
+  // - If no anchor images, fall back to printed-page image as the cover.
+  const pageCoverUrl = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${pageId}.jpg`;
+  let coverImage: Article['coverImage'];
+  if (anchor.images && anchor.images.length > 0) {
+    coverImage = undefined;
+    combinedBody += `\n<hr>\n<figure><img src="${pageCoverUrl}"><figcaption>Edición impresa</figcaption></figure>`;
+  } else {
+    coverImage = { url: pageCoverUrl };
+  }
 
   const sizeBytes = Buffer.byteLength(combinedBody, 'utf8');
   if (sizeBytes > 50_000) {

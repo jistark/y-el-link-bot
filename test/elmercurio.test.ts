@@ -314,3 +314,35 @@ describe('articleToNodes — kicker fused into title', () => {
     expect((firstTextNode as any).children[0]).toContain('bajada');
   });
 });
+
+describe('articleToNodes — story group cover priority', () => {
+  it('when article has body images, no coverImage means first <figure> is body image', () => {
+    const article = {
+      title: 't',
+      body: '<p>body</p>',
+      images: [{ url: 'https://example.com/photo.jpg', caption: 'foto' }],
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    // First figure node must be the body image, not a cover
+    const firstFigure = nodes.find((n: any) => typeof n === 'object' && n.tag === 'figure');
+    expect(firstFigure).toBeDefined();
+    const img = (firstFigure as any).children?.find((c: any) => c.tag === 'img');
+    expect(img?.attrs?.src).toBe('https://example.com/photo.jpg');
+  });
+
+  it('when article has no body images and a coverImage, the cover is the first figure', () => {
+    const article = {
+      title: 't',
+      body: '<p>body</p>',
+      coverImage: { url: 'https://example.com/page.jpg' },
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const firstFigure = nodes.find((n: any) => typeof n === 'object' && n.tag === 'figure');
+    const img = (firstFigure as any).children?.find((c: any) => c.tag === 'img');
+    expect(img?.attrs?.src).toBe('https://example.com/page.jpg');
+  });
+});
