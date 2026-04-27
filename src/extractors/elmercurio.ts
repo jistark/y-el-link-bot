@@ -44,9 +44,19 @@ export function sanitizeMercurioMarkup(input: string): string {
 interface MercurioJsonArticle {
   title?: string;
   head?: string;
+  head_label?: string;
   head_deck?: string;
   byline?: string;
   body?: string;
+  quotes?: { quote: string }[];
+  images?: {
+    path: string;
+    caption?: string;
+    credits?: string;
+    name?: string;
+    noExport?: boolean;
+    infographic?: boolean;
+  }[];
 }
 
 // Respuesta de newsapi.ecn.cl (igual que La Segunda)
@@ -214,31 +224,61 @@ async function extractFromDigitalJson(date: string, articleId: string): Promise<
 
   const data: MercurioJsonArticle = await response.json();
 
-  let title = data.title || data.head;
-  if (!title) {
+  // Title: prefer `title`, fall back to `head`. Sanitize either way.
+  const rawTitle = data.title || data.head;
+  if (!rawTitle) {
     throw new Error('Artículo sin título');
   }
-  // Limpiar tags de highlight
-  title = title.replace(/<\/?highlight>/gi, '').trim();
+  const title = stripTags(sanitizeMercurioMarkup(rawTitle));
 
-  let body = data.body || '';
-  body = body
-    .replace(/<\/?body>/gi, '')
-    .replace(/<P>/gi, '<p>')
-    .replace(/<\/P>/gi, '</p>')
-    .replace(/<subhead>/gi, '<h3>')
-    .replace(/<\/subhead>/gi, '</h3>')
-    .replace(/<italic>/gi, '<i>')
-    .replace(/<\/italic>/gi, '</i>')
-    .replace(/<bold>/gi, '<b>')
-    .replace(/<\/bold>/gi, '</b>')
-    .replace(/<byline>.*?<\/byline>/gis, '');
+  // Kicker (volada/antetítulo)
+  const kicker = data.head_label
+    ? stripTags(sanitizeMercurioMarkup(data.head_label))
+    : undefined;
+
+  // Subtitle (bajada)
+  const subtitle = data.head_deck
+    ? stripTags(sanitizeMercurioMarkup(data.head_deck))
+    : undefined;
+
+  // Author
+  const author = data.byline
+    ? stripTags(sanitizeMercurioMarkup(data.byline)).replace(/^Por\s+/i, '').trim()
+    : undefined;
+
+  // Quotes block (rendered as blockquotes prepended to body)
+  const quoteBlocks = (data.quotes || [])
+    .map(q => sanitizeMercurioMarkup(q.quote || ''))
+    .filter(Boolean)
+    .map(q => `<blockquote>${q}</blockquote>`)
+    .join('\n');
+
+  // Body sanitized
+  const sanitizedBody = sanitizeMercurioMarkup(data.body || '');
+  const body = quoteBlocks
+    ? `${quoteBlocks}\n${sanitizedBody}`
+    : sanitizedBody;
+
+  // Images: filter by noExport=false AND infographic=false
+  // (DO NOT filter by name starting with NO_WEB_; main article photos use that prefix)
+  const images = (data.images || [])
+    .filter(img => img.noExport === false && img.infographic === false && img.path)
+    .map(img => {
+      const url = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${img.path}`;
+      let caption = img.caption ? stripTags(sanitizeMercurioMarkup(img.caption)) : undefined;
+      if (img.credits) {
+        caption = caption ? `${caption} (Foto: ${img.credits})` : `Foto: ${img.credits}`;
+      }
+      return { url, caption };
+    });
 
   return {
     title,
-    subtitle: data.head_deck ? cleanMercurioTags(data.head_deck) : undefined,
-    author: data.byline ? cleanMercurioTags(data.byline) : undefined,
+    kicker,
+    subtitle,
+    author,
     body,
+    images: images.length > 0 ? images : undefined,
     url: `https://digital.elmercurio.com/${date}/content/articles/${articleId}`,
     source: 'elmercurio',
   };
@@ -510,4 +550,10 @@ export async function extract(url: string): Promise<Article> {
     default:
       throw new Error('Tipo de URL no soportado');
   }
+}
+
+// Strips all HTML tags, preserving text content. Used after sanitizeMercurioMarkup
+// for fields rendered as plain text (title, kicker, subtitle, author).
+function stripTags(html: string): string {
+  return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
