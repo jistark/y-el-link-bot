@@ -218,21 +218,21 @@ async function extractFromDigitalJson(date: string, articleId: string): Promise<
   if (!rawTitle) {
     throw new Error('Artículo sin título');
   }
-  const title = stripTags(sanitizeMercurioMarkup(rawTitle));
+  const title = sanitizeAndStripMercurio(rawTitle);
 
   // Kicker (volada/antetítulo)
   const kicker = data.head_label
-    ? stripTags(sanitizeMercurioMarkup(data.head_label))
+    ? sanitizeAndStripMercurio(data.head_label)
     : undefined;
 
   // Subtitle (bajada)
   const subtitle = data.head_deck
-    ? stripTags(sanitizeMercurioMarkup(data.head_deck))
+    ? sanitizeAndStripMercurio(data.head_deck)
     : undefined;
 
   // Author
   const author = data.byline
-    ? stripTags(sanitizeMercurioMarkup(data.byline)).replace(/^Por\s+/i, '').trim()
+    ? sanitizeAndStripMercurio(data.byline).replace(/^Por\s+/i, '').trim()
     : undefined;
 
   // Quotes block (rendered as blockquotes prepended to body)
@@ -254,7 +254,7 @@ async function extractFromDigitalJson(date: string, articleId: string): Promise<
     .filter(img => img.noExport === false && img.infographic === false && img.path)
     .map(img => {
       const url = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${img.path}`;
-      let caption = img.caption ? stripTags(sanitizeMercurioMarkup(img.caption)) : undefined;
+      let caption = img.caption ? sanitizeAndStripMercurio(img.caption) : undefined;
       if (img.credits) {
         caption = caption ? `${caption} (Foto: ${img.credits})` : `Foto: ${img.credits}`;
       }
@@ -545,4 +545,9 @@ export async function extract(url: string): Promise<Article> {
 // for fields rendered as plain text (title, kicker, subtitle, author).
 function stripTags(html: string): string {
   return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Convenience: sanitize El Mercurio markup and strip all tags to plain text.
+export function sanitizeAndStripMercurio(input: string): string {
+  return stripTags(sanitizeMercurioMarkup(input));
 }

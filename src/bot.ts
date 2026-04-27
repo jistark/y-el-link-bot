@@ -91,7 +91,7 @@ function isExtractableUrl(url: string): boolean {
     return false;
   }
 }
-import { isPageUrl, fetchPageArticles, extractByArticleId, sanitizeMercurioMarkup, type PageArticleInfo } from './extractors/elmercurio.js';
+import { isPageUrl, fetchPageArticles, extractByArticleId, sanitizeAndStripMercurio, type PageArticleInfo } from './extractors/elmercurio.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import {
@@ -1241,7 +1241,7 @@ export function createBot(token: string): Bot {
 
           for (let i = 0; i < maxArticles; i++) {
             const a = pageData.articles[i];
-            const cleanTitle = sanitizeMercurioMarkup(a.title).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+            const cleanTitle = sanitizeAndStripMercurio(a.title);
             text += `${NUMBER_EMOJIS[i]} ${escapeHtml(cleanTitle)}\n`;
             keyboard.text(NUMBER_EMOJIS[i], `empage:${i}`);
             if ((i + 1) % 5 === 0) keyboard.row(); // Máx 5 botones por fila
