@@ -719,11 +719,15 @@ export async function extractStoryGroup(
       recuadroCount: group.recuadros.length,
       timestamp: new Date().toISOString(),
     }));
+    let truncated = false;
     while (Buffer.byteLength(combinedBody, 'utf8') > 45_000) {
       const lastAside = combinedBody.lastIndexOf('<aside>');
       if (lastAside === -1) break;
-      combinedBody = combinedBody.slice(0, lastAside).trimEnd() +
-        '\n<p><i>(Continúa en el original →)</i></p>';
+      combinedBody = combinedBody.slice(0, lastAside).trimEnd();
+      truncated = true;
+    }
+    if (truncated) {
+      combinedBody += '\n<p><i>(Continúa en el original →)</i></p>';
     }
   }
 

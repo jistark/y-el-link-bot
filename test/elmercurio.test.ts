@@ -149,8 +149,7 @@ describe('groupPageArticles', () => {
     }));
     const result = groupPageArticles(articles);
     expect(result.groups).toHaveLength(0);
-    expect(result.standalone.length).toBeGreaterThanOrEqual(2);
-    expect(result.standalone.length).toBeLessThanOrEqual(4);
+    expect(result.standalone).toHaveLength(3);
     expect(result.standalone.find(a => a.name.endsWith('.AR1'))).toBeUndefined();
     expect(result.standalone.find(a => a.name.startsWith('NO_WEB_'))).toBeUndefined();
   });
