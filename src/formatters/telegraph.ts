@@ -312,6 +312,17 @@ function htmlToNodes(html: string): TelegraphNode[] {
 export function articleToNodes(article: Article): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
 
+  // Cover image (first <img> in content drives Telegraph's OG image)
+  if (article.coverImage?.url) {
+    const coverChildren: TelegraphNode[] = [
+      { tag: 'img', attrs: { src: article.coverImage.url } },
+    ];
+    if (article.coverImage.caption) {
+      coverChildren.push({ tag: 'figcaption', children: [decodeEntities(article.coverImage.caption)] });
+    }
+    nodes.push({ tag: 'figure', children: coverChildren });
+  }
+
   // Kicker (antetítulo) como primer párrafo en negrita
   if (article.kicker) {
     nodes.push({ tag: 'p', children: [{ tag: 'b', children: [decodeEntities(article.kicker)] }] });
