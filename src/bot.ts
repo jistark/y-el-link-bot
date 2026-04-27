@@ -1243,17 +1243,30 @@ export function createBot(token: string): Bot {
           // AUTO: 1 group + 0 standalones → render group without prompting
           if (grouping.groups.length === 1 && grouping.standalone.length === 0) {
             const group = grouping.groups[0];
-            const article = await extractStoryGroup(group, pageData.date, pageData.pageId);
-            article.url = url;
-            const result = await createPage(article);
-            const cacheKey = `${url}#group:${group.anchor.id}`;
-            cache.set(cacheKey, { result, expires: Date.now() + TTL });
-            pathToUrl.set(result.path, url);
-            addRegistryEntry({
-              type: 'extractor', originalUrl: url, source: article.source,
-              telegraphPath: result.path, title: article.title, chatId: ctx.chat?.id,
-            }).catch(() => {});
-            await processAndReply(ctx, url, result);
+            const processingMsg = await ctx.reply('⏳ Reconstruyendo reportaje...', {
+              reply_to_message_id: ctx.message.message_id,
+            });
+            try {
+              const article = await extractStoryGroup(group, pageData.date, pageData.pageId);
+              article.url = url;
+              const result = await createPage(article);
+              const cacheKey = `${url}#group:${group.anchor.id}`;
+              cache.set(cacheKey, { result, expires: Date.now() + TTL });
+              pathToUrl.set(result.path, url);
+              addRegistryEntry({
+                type: 'extractor', originalUrl: url, source: article.source,
+                telegraphPath: result.path, title: article.title, chatId: ctx.chat?.id,
+              }).catch(() => {});
+              try { await ctx.api.deleteMessage(processingMsg.chat.id, processingMsg.message_id); } catch {}
+              await processAndReply(ctx, url, result);
+            } catch (err) {
+              try {
+                await ctx.api.editMessageText(processingMsg.chat.id, processingMsg.message_id,
+                  '❌ No pude reconstruir el reportaje.');
+                scheduleDelete(ctx.api, processingMsg.chat.id, processingMsg.message_id);
+              } catch {}
+              throw err; // re-throw so the outer try/catch logs it
+            }
             continue;
           }
 
