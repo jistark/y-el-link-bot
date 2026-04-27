@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { sanitizeMercurioMarkup } from '../src/extractors/elmercurio.js';
+import { sanitizeMercurioMarkup, parseArticleName } from '../src/extractors/elmercurio.js';
 import buchiAnchor from './fixtures/elmercurio_buchi_anchor.json';
 
 describe('sanitizeMercurioMarkup', () => {
@@ -73,5 +73,54 @@ describe('extractFromDigitalJson (via fixture parsing)', () => {
     expect(mainPhoto).toBeDefined();
     expect(mainPhoto!.noExport).toBe(false);
     expect(mainPhoto!.name).toMatch(/NO_WEB_/);
+  });
+});
+
+describe('parseArticleName', () => {
+  it('parses anchor with T1 prefix', () => {
+    expect(parseArticleName('T1_EyN_B12_2504_Büchi.ART')).toEqual({
+      topicKey: 'T1',
+      isRecuadro: false,
+      recuadroIndex: null,
+      normalizedKey: 'T1_EyN_B12_2504_Büchi',
+      isValid: true,
+    });
+  });
+
+  it('parses recuadro with T1 prefix and _R1 suffix', () => {
+    expect(parseArticleName('T1_2_EyN_B12_2504_Büchi_R1.ART')).toEqual({
+      topicKey: 'T1',
+      isRecuadro: true,
+      recuadroIndex: 1,
+      normalizedKey: 'T1_EyN_B12_2504_Büchi',
+      isValid: true,
+    });
+  });
+
+  it('parses recuadro R3 with T1 prefix', () => {
+    const r = parseArticleName('T1_4_EyN_B12_2504_Büchi_R3.ART');
+    expect(r.isRecuadro).toBe(true);
+    expect(r.recuadroIndex).toBe(3);
+    expect(r.normalizedKey).toBe('T1_EyN_B12_2504_Büchi');
+  });
+
+  it('parses article without T-prefix', () => {
+    const r = parseArticleName('EYN_B1_LLAMADO_A_2504.ART');
+    expect(r.topicKey).toBeNull();
+    expect(r.isRecuadro).toBe(false);
+    expect(r.isValid).toBe(true);
+  });
+
+  it('rejects banner section files (.AR1)', () => {
+    expect(parseArticleName('Chile.Nacional.Economía_y_Ne.AR1').isValid).toBe(false);
+  });
+
+  it('handles names with accented characters (ü)', () => {
+    const r = parseArticleName('T1_2_X_Büchi_R1.ART');
+    expect(r.normalizedKey).toBe('T1_X_Büchi');
+  });
+
+  it('handles names with periods in the middle', () => {
+    expect(parseArticleName('Chile.Foo.Bar.AR1').isValid).toBe(false);
   });
 });
