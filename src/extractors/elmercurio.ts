@@ -56,6 +56,8 @@ interface MercurioJsonArticle {
     name?: string;
     noExport?: boolean;
     infographic?: boolean;
+    width?: number;
+    height?: number;
   }[];
 }
 
@@ -266,8 +268,15 @@ function extractFromDigitalJsonResponse(
 
   // Images: filter by noExport=false AND infographic=false
   // (DO NOT filter by name starting with NO_WEB_; main article photos use that prefix)
+  // Reject tiny images (decorative glyphs, print ornaments) under 100px in either dimension.
   const images = (data.images || [])
-    .filter(img => img.noExport === false && img.infographic === false && img.path)
+    .filter(img =>
+      img.noExport === false
+      && img.infographic === false
+      && img.path
+      && (img.width ?? 0) >= 100
+      && (img.height ?? 0) >= 100
+    )
     .map(img => {
       const url = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${img.path}`;
       let caption = img.caption ? sanitizeAndStripMercurio(img.caption) : undefined;

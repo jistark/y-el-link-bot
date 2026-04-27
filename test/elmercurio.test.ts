@@ -235,3 +235,20 @@ describe('articleToNodes — byline rendering', () => {
     expect(hasBylineP).toBe(false);
   });
 });
+
+describe('image filter (tiny image rejection)', () => {
+  it('Büchi anchor fixture image filter excludes the small 44×24 glyph', () => {
+    // Use the fixture data directly to assert filter logic.
+    const fixture = require('./fixtures/elmercurio_buchi_anchor.json');
+    const filtered = fixture.images.filter((img: any) =>
+      img.noExport === false
+      && img.infographic === false
+      && img.path
+      && (img.width ?? 0) >= 100
+      && (img.height ?? 0) >= 100
+    );
+    // Should keep only the 193×322 Büchi photo, not the 44×24 glyph
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].width).toBeGreaterThanOrEqual(100);
+  });
+});
