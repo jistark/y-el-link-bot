@@ -7,28 +7,28 @@ export function sanitizeMercurioMarkup(input: string): string {
   if (!input) return '';
   let s = input;
 
-  // Self-closing first
-  s = s.replace(/<dropcap\s*\/?>/gi, '');
+  // Self-closing first (accept attributes)
+  s = s.replace(/<dropcap(\s[^>]*)?\s*\/?>/gi, '');
 
   // Wrappers we want to drop entirely (outer container only — content kept)
-  s = s.replace(/<\/?body>/gi, '');
-  s = s.replace(/<\/?head_label>/gi, '');
-  s = s.replace(/<\/?head_deck>/gi, '');
-  s = s.replace(/<\/?byline>/gi, '');
-  s = s.replace(/<\/?byline_credit>/gi, '');
-  s = s.replace(/<\/?head>/gi, '');
-  s = s.replace(/<\/?quote>/gi, '');
+  s = s.replace(/<\/?body(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?head_label(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?head_deck(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?byline(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?byline_credit(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?head(\s[^>]*)?>/gi, '');
+  s = s.replace(/<\/?quote(\s[^>]*)?>/gi, '');
 
-  // Tag substitutions
-  s = s.replace(/<bold_intro>([\s\S]*?)<\/bold_intro>/gi, '<p><b>$1</b></p>');
-  s = s.replace(/<leadin>([\s\S]*?)<\/leadin>/gi, '<b>$1</b>');
-  s = s.replace(/<subhead>([\s\S]*?)<\/subhead>/gi, '<h3>$1</h3>');
-  s = s.replace(/<bold>/gi, '<b>').replace(/<\/bold>/gi, '</b>');
-  s = s.replace(/<italic>/gi, '<i>').replace(/<\/italic>/gi, '</i>');
+  // Tag substitutions (accept attributes on opening tags)
+  s = s.replace(/<bold_intro(\s[^>]*)?>([\s\S]*?)<\/bold_intro>/gi, '<p><b>$2</b></p>');
+  s = s.replace(/<leadin(\s[^>]*)?>([\s\S]*?)<\/leadin>/gi, '<b>$2</b>');
+  s = s.replace(/<subhead(\s[^>]*)?>([\s\S]*?)<\/subhead>/gi, '<h3>$2</h3>');
+  s = s.replace(/<bold(\s[^>]*)?>/gi, '<b>').replace(/<\/bold>/gi, '</b>');
+  s = s.replace(/<italic(\s[^>]*)?>/gi, '<i>').replace(/<\/italic>/gi, '</i>');
   s = s.replace(/<P(\s[^>]*)?>/gi, '<p>').replace(/<\/P>/gi, '</p>');
 
   // Strip <highlight> wrapper but keep content
-  s = s.replace(/<\/?highlight>/gi, '');
+  s = s.replace(/<\/?highlight(\s[^>]*)?>/gi, '');
 
   // Strip any remaining unknown tags (preserve content)
   // Allowed: p, b, i, h3, h4, blockquote, figure, img, figcaption, br, a, hr, aside

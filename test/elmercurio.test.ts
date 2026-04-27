@@ -49,6 +49,19 @@ describe('sanitizeMercurioMarkup', () => {
   it('strips outer <body> wrapper', () => {
     expect(sanitizeMercurioMarkup('<body><P>x</P></body>')).toBe('<p>x</p>');
   });
+
+  it('handles attributes on substitution tags', () => {
+    expect(sanitizeMercurioMarkup('<bold class="x">Hello</bold>')).toBe('<b>Hello</b>');
+    expect(sanitizeMercurioMarkup('<subhead style="y">Tema</subhead>')).toBe('<h3>Tema</h3>');
+  });
+
+  it('handles attributes on wrapper tags', () => {
+    expect(sanitizeMercurioMarkup('<head_label class="z"><P>Antonio:</P></head_label>')).toBe('<p>Antonio:</p>');
+  });
+
+  it('handles attributes on self-closing dropcap', () => {
+    expect(sanitizeMercurioMarkup('<dropcap class="foo"/>Antonio')).toBe('Antonio');
+  });
 });
 
 describe('extractFromDigitalJson (via fixture parsing)', () => {
