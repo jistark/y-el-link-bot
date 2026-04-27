@@ -217,14 +217,18 @@ function processMacros(text: string): string {
 // Extrae desde la API JSON de digital.elmercurio.com
 async function extractFromDigitalJson(date: string, articleId: string): Promise<Article> {
   const jsonUrl = `https://digital.elmercurio.com/${date}/content/articles/${articleId}.json`;
-
   const response = await fetch(jsonUrl, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
+  return extractFromDigitalJsonResponse(await response.json(), date, articleId);
+}
 
-  const data: MercurioJsonArticle = await response.json();
-
+function extractFromDigitalJsonResponse(
+  data: MercurioJsonArticle,
+  date: string,
+  articleId: string,
+): Article {
   // Title: prefer `title`, fall back to `head`. Sanitize either way.
   const rawTitle = data.title || data.head;
   if (!rawTitle) {
@@ -656,4 +660,86 @@ export function groupPageArticles(articles: PageArticleInfo[]): PageArticleGroup
   looseStandalones.sort((a, b) => (orderIndex.get(a.id) || 0) - (orderIndex.get(b.id) || 0));
 
   return { groups, standalone: looseStandalones };
+}
+
+export async function extractStoryGroup(
+  group: StoryGroup,
+  date: string,
+  pageId: string,
+): Promise<Article> {
+  const fetchOne = async (id: string): Promise<Article> => {
+    const url = `https://digital.elmercurio.com/${date}/content/articles/${id}.json`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${id}`);
+    return extractFromDigitalJsonResponse(await r.json() as MercurioJsonArticle, date, id);
+  };
+
+  const [anchorRes, ...recuadroResults] = await Promise.allSettled([
+    fetchOne(group.anchor.id),
+    ...group.recuadros.map(r => fetchOne(r.id)),
+  ]);
+
+  if (anchorRes.status === 'rejected') {
+    throw new Error(`No se pudo obtener el ancla del reportaje: ${anchorRes.reason}`);
+  }
+  const anchor = anchorRes.value;
+
+  let combinedBody = anchor.body;
+
+  for (let i = 0; i < group.recuadros.length; i++) {
+    const recuadroMeta = group.recuadros[i];
+    const res = recuadroResults[i];
+    if (res.status === 'fulfilled') {
+      const r = res.value;
+      const titleHtml = r.title ? `<h3>${escapeHtmlMinimal(r.title)}</h3>` : '';
+      combinedBody += `\n<aside>${titleHtml}${r.body}</aside>`;
+    } else {
+      console.error(JSON.stringify({
+        event: 'story_group_recuadro_failed',
+        anchorId: group.anchor.id,
+        recuadroId: recuadroMeta.id,
+        error: String(res.reason),
+        timestamp: new Date().toISOString(),
+      }));
+      const titleClean = sanitizeAndStripMercurio(recuadroMeta.title);
+      combinedBody += `\n<aside><p><i>(Recuadro «${escapeHtmlMinimal(titleClean)}» no disponible)</i></p></aside>`;
+    }
+  }
+
+  const coverImage = {
+    url: `https://digital.elmercurio.com/${date}/content/pages/img/mid/${pageId}.jpg`,
+  };
+
+  const sizeBytes = Buffer.byteLength(combinedBody, 'utf8');
+  if (sizeBytes > 50_000) {
+    console.error(JSON.stringify({
+      event: 'telegraph_payload_size_warning',
+      sizeBytes,
+      anchorId: group.anchor.id,
+      recuadroCount: group.recuadros.length,
+      timestamp: new Date().toISOString(),
+    }));
+    while (Buffer.byteLength(combinedBody, 'utf8') > 45_000) {
+      const lastAside = combinedBody.lastIndexOf('<aside>');
+      if (lastAside === -1) break;
+      combinedBody = combinedBody.slice(0, lastAside).trimEnd() +
+        '\n<p><i>(Continúa en el original →)</i></p>';
+    }
+  }
+
+  return {
+    title: anchor.title,
+    kicker: anchor.kicker,
+    subtitle: anchor.subtitle,
+    author: anchor.author,
+    body: combinedBody,
+    images: anchor.images,
+    coverImage,
+    url: `https://digital.elmercurio.com/${date}/content/articles/${group.anchor.id}`,
+    source: 'elmercurio',
+  };
+}
+
+function escapeHtmlMinimal(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
