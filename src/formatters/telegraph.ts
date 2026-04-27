@@ -236,6 +236,9 @@ function htmlToNodes(html: string): TelegraphNode[] {
   // Paso 2: Extraer headers <h3> antes de dividir
   normalized = normalized.replace(/<h([1-6])[^>]*>(.+?)<\/h\1>/gi, '\n<H3>$2</H3>\n');
 
+  // Paso 2b: Extraer blockquotes
+  normalized = normalized.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '\n<BQ>$1</BQ>\n');
+
   // Paso 3: Extraer imágenes
   normalized = normalized.replace(/<img\s+[^>]*src="([^"]+)"[^>]*>/gi, '\n<IMG>$1</IMG>\n');
 
@@ -262,6 +265,18 @@ function htmlToNodes(html: string): TelegraphNode[] {
       const text = decodeEntities(headerMatch[1].replace(/<[^>]+>/g, '').trim());
       if (text) {
         nodes.push({ tag: 'h3', children: [text] });
+      }
+      continue;
+    }
+
+    // Blockquote
+    const bqMatch = block.match(/^<BQ>([\s\S]+)<\/BQ>$/i);
+    if (bqMatch) {
+      const inner = bqMatch[1].trim();
+      // The inner can contain inline HTML (b, i, leadin-converted-to-b, etc.)
+      const children = parseInline(inner);
+      if (children.length > 0) {
+        nodes.push({ tag: 'blockquote', children });
       }
       continue;
     }
