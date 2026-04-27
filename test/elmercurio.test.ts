@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { sanitizeMercurioMarkup, parseArticleName, groupPageArticles } from '../src/extractors/elmercurio.js';
+import { articleToNodes } from '../src/formatters/telegraph.js';
 import buchiAnchor from './fixtures/elmercurio_buchi_anchor.json';
 import b12Fixture from './fixtures/elmercurio_b12_2026-04-25.json';
 import b1Fixture from './fixtures/elmercurio_b1_2026-04-25.json';
@@ -165,5 +166,35 @@ describe('groupPageArticles', () => {
 
   it('returns empty for empty input', () => {
     expect(groupPageArticles([])).toEqual({ groups: [], standalone: [] });
+  });
+});
+
+describe('articleToNodes — blockquote and aside rendering', () => {
+  it('renders <blockquote> in body as a blockquote node', () => {
+    const article = {
+      title: 't',
+      body: '<blockquote>Quote text</blockquote><p>After</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const bq = nodes.find((n: any) => typeof n === 'object' && n.tag === 'blockquote');
+    expect(bq).toBeDefined();
+  });
+
+  it('renders <aside> in body as an aside node', () => {
+    const article = {
+      title: 't',
+      body: '<aside><h3>Recuadro</h3><p>Body</p></aside><p>Main</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const aside = nodes.find((n: any) => typeof n === 'object' && n.tag === 'aside');
+    expect(aside).toBeDefined();
+    // Aside should contain h3 and p children
+    const children = (aside as any).children;
+    expect(children.find((c: any) => c.tag === 'h3')).toBeDefined();
+    expect(children.find((c: any) => c.tag === 'p')).toBeDefined();
   });
 });

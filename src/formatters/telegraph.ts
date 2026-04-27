@@ -203,7 +203,7 @@ const ALLOWED_TAGS = new Set([
   'p', 'b', 'strong', 'i', 'em', 'a', 'mark', 'u', 's',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'img', 'figure', 'figcaption', 'iframe',
-  'br', 'div', 'span', 'section', 'article',
+  'br', 'div', 'span', 'section', 'article', 'aside',
   'blockquote', 'ul', 'ol', 'li',
   'table', 'tr', 'td', 'th', 'thead', 'tbody',
   'video', 'source', 'audio',
@@ -217,6 +217,7 @@ function stripUnknownTags(html: string): string {
 
 function htmlToNodes(html: string): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
+  const asideContents: string[] = [];
 
   // Paso 0: Limpiar tags HTML
   // Normalizar <a> tags: quitar atributos extra (type, id, class, etc.) dejando
@@ -238,6 +239,14 @@ function htmlToNodes(html: string): TelegraphNode[] {
 
   // Paso 2b: Extraer blockquotes
   normalized = normalized.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '\n<BQ>$1</BQ>\n');
+
+  // Paso 2c: Extraer asides (story group recuadros). The inner content
+  // is processed recursively as block-level HTML.
+  normalized = normalized.replace(/<aside[^>]*>([\s\S]*?)<\/aside>/gi, (_, inner) => {
+    const placeholder = `__ASIDE_${asideContents.length}__`;
+    asideContents.push(inner);
+    return `\n<ASIDE>${placeholder}</ASIDE>\n`;
+  });
 
   // Paso 3: Extraer imágenes
   normalized = normalized.replace(/<img\s+[^>]*src="([^"]+)"[^>]*>/gi, '\n<IMG>$1</IMG>\n');
@@ -311,6 +320,19 @@ function htmlToNodes(html: string): TelegraphNode[] {
         figChildren.push({ tag: 'figcaption', children: [decodeEntities(figMatch[2])] });
       }
       nodes.push({ tag: 'figure', children: figChildren });
+      continue;
+    }
+
+    // Aside (story group recuadro)
+    const asideMatch = block.match(/^<ASIDE>__ASIDE_(\d+)__<\/ASIDE>$/i);
+    if (asideMatch) {
+      const inner = asideContents[parseInt(asideMatch[1], 10)];
+      if (inner) {
+        const innerNodes = htmlToNodes(inner);
+        if (innerNodes.length > 0) {
+          nodes.push({ tag: 'aside', children: innerNodes });
+        }
+      }
       continue;
     }
 
