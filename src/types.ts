@@ -1,5 +1,6 @@
 export interface Article {
   title: string;
+  kicker?: string;
   subtitle?: string;
   author?: string;
   date?: string;
