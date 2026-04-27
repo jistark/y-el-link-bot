@@ -91,7 +91,16 @@ function isExtractableUrl(url: string): boolean {
     return false;
   }
 }
-import { isPageUrl, fetchPageArticles, extractByArticleId, sanitizeAndStripMercurio, type PageArticleInfo } from './extractors/elmercurio.js';
+import {
+  isPageUrl,
+  fetchPageArticles,
+  extractByArticleId,
+  extractStoryGroup,
+  groupPageArticles,
+  sanitizeAndStripMercurio,
+  type PageArticleInfo,
+  type StoryGroup,
+} from './extractors/elmercurio.js';
 import { createPage, deletePage, type CreatePageResult } from './formatters/telegraph.js';
 import { getHoroscopo, getSignosList } from './commands/horoscopo.js';
 import {
@@ -170,8 +179,10 @@ const pending = new Map<string, PendingRequest>();
 
 // Pendientes de selección de artículo en página (El Mercurio papel digital)
 interface PendingPageSelection {
-  articles: PageArticleInfo[];
+  groups: StoryGroup[];
+  standalone: PageArticleInfo[];
   date: string;
+  pageId: string;
   originalUrl: string;
   userId: number;
   username?: string;
@@ -1218,12 +1229,25 @@ export function createBot(token: string): Bot {
             continue;
           }
 
-          // Si hay un solo artículo, extraerlo directamente sin preguntar
-          if (pageData.articles.length === 1) {
-            const article = await extractByArticleId(pageData.articles[0].id, pageData.date);
+          const grouping = groupPageArticles(pageData.articles);
+
+          console.log(JSON.stringify({
+            event: 'page_groups_detected',
+            url,
+            groupCount: grouping.groups.length,
+            standaloneCount: grouping.standalone.length,
+            totalArticles: pageData.articles.length,
+            timestamp: new Date().toISOString(),
+          }));
+
+          // AUTO: 1 group + 0 standalones → render group without prompting
+          if (grouping.groups.length === 1 && grouping.standalone.length === 0) {
+            const group = grouping.groups[0];
+            const article = await extractStoryGroup(group, pageData.date, pageData.pageId);
             article.url = url;
             const result = await createPage(article);
-            cache.set(`${url}#${pageData.articles[0].id}`, { result, expires: Date.now() + TTL });
+            const cacheKey = `${url}#group:${group.anchor.id}`;
+            cache.set(cacheKey, { result, expires: Date.now() + TTL });
             pathToUrl.set(result.path, url);
             addRegistryEntry({
               type: 'extractor', originalUrl: url, source: article.source,
@@ -1233,18 +1257,44 @@ export function createBot(token: string): Bot {
             continue;
           }
 
-          // Múltiples artículos: mostrar selector
-          const maxArticles = Math.min(pageData.articles.length, NUMBER_EMOJIS.length);
-          const keyboard = new InlineKeyboard();
+          // AUTO: 0 groups + 1 standalone → render directly (preserves prior behavior)
+          if (grouping.groups.length === 0 && grouping.standalone.length === 1) {
+            const lone = grouping.standalone[0];
+            const article = await extractByArticleId(lone.id, pageData.date);
+            article.url = url;
+            const result = await createPage(article);
+            cache.set(`${url}#${lone.id}`, { result, expires: Date.now() + TTL });
+            pathToUrl.set(result.path, url);
+            addRegistryEntry({
+              type: 'extractor', originalUrl: url, source: article.source,
+              telegraphPath: result.path, title: article.title, chatId: ctx.chat?.id,
+            }).catch(() => {});
+            await processAndReply(ctx, url, result);
+            continue;
+          }
+
+          // Otherwise: show selector with groups + standalones
           let text = `📰 <b>${escapeHtml(pageData.sectionName)}</b> — Pág. ${pageData.page}\n\n`;
           text += 'Elige el artículo:\n\n';
+          const keyboard = new InlineKeyboard();
 
-          for (let i = 0; i < maxArticles; i++) {
-            const a = pageData.articles[i];
+          // Groups first
+          for (let gi = 0; gi < grouping.groups.length; gi++) {
+            const g = grouping.groups[gi];
+            const cleanTitle = sanitizeAndStripMercurio(g.anchor.title);
+            const partsCount = 1 + g.recuadros.length;
+            text += `📋 Reportaje completo: ${escapeHtml(cleanTitle)} (${partsCount} partes)\n`;
+            keyboard.text(`📋 ${gi + 1}`, `empage:g:${gi}`).row();
+          }
+
+          // Standalones with numbered buttons
+          const maxStandalone = Math.min(grouping.standalone.length, NUMBER_EMOJIS.length);
+          for (let i = 0; i < maxStandalone; i++) {
+            const a = grouping.standalone[i];
             const cleanTitle = sanitizeAndStripMercurio(a.title);
             text += `${NUMBER_EMOJIS[i]} ${escapeHtml(cleanTitle)}\n`;
-            keyboard.text(NUMBER_EMOJIS[i], `empage:${i}`);
-            if ((i + 1) % 5 === 0) keyboard.row(); // Máx 5 botones por fila
+            keyboard.text(NUMBER_EMOJIS[i], `empage:a:${i}`);
+            if ((i + 1) % 5 === 0) keyboard.row();
           }
 
           const botMessage = await ctx.reply(text, {
@@ -1254,8 +1304,10 @@ export function createBot(token: string): Bot {
           });
 
           pendingPages.set(botMessage.message_id, {
-            articles: pageData.articles.slice(0, maxArticles),
+            groups: grouping.groups,
+            standalone: grouping.standalone.slice(0, maxStandalone),
             date: pageData.date,
+            pageId: pageData.pageId,
             originalUrl: url,
             userId: ctx.from?.id || 0,
             username: ctx.from?.username,
@@ -1818,7 +1870,6 @@ export function createBot(token: string): Bot {
 
     // Selección de artículo en página de El Mercurio
     if (data.startsWith('empage:')) {
-      const index = parseInt(data.slice(7), 10);
       const messageId = ctx.callbackQuery.message?.message_id;
       if (!messageId) {
         await ctx.answerCallbackQuery({ text: 'Error interno' });
@@ -1831,7 +1882,6 @@ export function createBot(token: string): Bot {
         return;
       }
 
-      // Solo el autor o admins pueden elegir
       const isOwner = ctx.from?.id === sel.userId;
       let isAdmin = false;
       if (!isOwner && ctx.chat && ctx.from?.id) {
@@ -1845,30 +1895,53 @@ export function createBot(token: string): Bot {
         return;
       }
 
-      const article = sel.articles[index];
-      if (!article) {
-        await ctx.answerCallbackQuery({ text: 'Artículo no válido' });
+      const m = data.match(/^empage:([ga]):(\d+)$/);
+      if (!m) {
+        await ctx.answerCallbackQuery({ text: 'Selección no válida' });
         return;
       }
+      const kind = m[1];
+      const idx = parseInt(m[2], 10);
 
-      pendingPages.delete(messageId);
-      await ctx.answerCallbackQuery({ text: '⏳ Procesando...' });
+      let extracted: import('./types.js').Article;
+      let cacheKey: string;
 
       try {
-        await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '⏳ Procesando artículo...');
+        if (kind === 'g') {
+          const group = sel.groups[idx];
+          if (!group) {
+            await ctx.answerCallbackQuery({ text: 'Grupo no válido' });
+            return;
+          }
+          pendingPages.delete(messageId);
+          await ctx.answerCallbackQuery({ text: '⏳ Procesando reportaje...' });
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '⏳ Procesando reportaje...');
+          extracted = await Promise.race([
+            extractStoryGroup(group, sel.date, sel.pageId),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30_000)),
+          ]);
+          cacheKey = `${sel.originalUrl}#group:${group.anchor.id}`;
+        } else {
+          const article = sel.standalone[idx];
+          if (!article) {
+            await ctx.answerCallbackQuery({ text: 'Artículo no válido' });
+            return;
+          }
+          pendingPages.delete(messageId);
+          await ctx.answerCallbackQuery({ text: '⏳ Procesando...' });
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '⏳ Procesando artículo...');
+          extracted = await Promise.race([
+            extractByArticleId(article.id, sel.date),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30_000)),
+          ]);
+          cacheKey = `${sel.originalUrl}#${article.id}`;
+        }
 
-        const extracted = await Promise.race([
-          extractByArticleId(article.id, sel.date),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout')), 30_000)
-          ),
-        ]);
         extracted.url = sel.originalUrl;
         const result = await createPage(extracted);
-        cache.set(`${sel.originalUrl}#${article.id}`, { result, expires: Date.now() + TTL });
+        cache.set(cacheKey, { result, expires: Date.now() + TTL });
         pathToUrl.set(result.path, sel.originalUrl);
 
-        // Construir mensaje final
         const keyboard = createActionKeyboard(result.path, sel.userId, sel.originalUrl);
         const mention = sel.username ? `@${sel.username}` :
           `<a href="tg://user?id=${sel.userId}">${escapeHtml(sel.firstName)}</a>`;
@@ -1929,13 +2002,14 @@ export function createBot(token: string): Bot {
         }
       } catch (error) {
         console.error(JSON.stringify({
-          event: 'page_article_error',
-          articleId: article.id,
+          event: 'page_extraction_error',
+          url: sel.originalUrl,
+          kind, idx,
           error: error instanceof Error ? error.message : String(error),
           timestamp: new Date().toISOString(),
         }));
         try {
-          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '❌ No pude acceder al artículo.');
+          await ctx.api.editMessageText(sel.chatId, sel.botMessageId, '❌ No pude reconstruir el artículo.');
           scheduleDelete(ctx.api, sel.chatId, sel.botMessageId);
         } catch {}
       }
