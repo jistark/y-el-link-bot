@@ -66,6 +66,14 @@ function generateSlug(source: Article['source']): string {
   return `${word}-${code}-${num}`;
 }
 
+function buildFullTitle(article: Article): string {
+  const title = decodeEntities(article.title);
+  if (article.kicker) {
+    return `${decodeEntities(article.kicker)} ${title}`;
+  }
+  return title;
+}
+
 interface CreatePageResponse {
   ok: boolean;
   result?: TelegraphPage;
@@ -360,9 +368,9 @@ export function articleToNodes(article: Article): TelegraphNode[] {
     nodes.push({ tag: 'figure', children: coverChildren });
   }
 
-  // Kicker (antetítulo) como primer párrafo en negrita
-  if (article.kicker) {
-    nodes.push({ tag: 'p', children: [{ tag: 'b', children: [decodeEntities(article.kicker)] }] });
+  // Subtítulo (bajada) como blockquote — primer nodo de texto, drives og:description
+  if (article.subtitle) {
+    nodes.push({ tag: 'blockquote', children: [decodeEntities(article.subtitle)] });
   }
 
   // Byline (author from the byline field)
@@ -371,11 +379,6 @@ export function articleToNodes(article: Article): TelegraphNode[] {
       tag: 'p',
       children: [{ tag: 'i', children: [`Por ${decodeEntities(article.author)}`] }],
     });
-  }
-
-  // Subtítulo como blockquote
-  if (article.subtitle) {
-    nodes.push({ tag: 'blockquote', children: [decodeEntities(article.subtitle)] });
   }
 
   // Imágenes principales al inicio
@@ -440,7 +443,7 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
     body: JSON.stringify({
       access_token: token,
       path,
-      title: decodeEntities(article.title),
+      title: buildFullTitle(article),
       author_name: getSourceName(article.source),
       author_url: article.url,
       content,

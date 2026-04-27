@@ -252,3 +252,39 @@ describe('image filter (tiny image rejection)', () => {
     expect(filtered[0].width).toBeGreaterThanOrEqual(100);
   });
 });
+
+describe('articleToNodes — kicker fused into title', () => {
+  it('does NOT render kicker as a body node (it goes into the page title instead)', () => {
+    const article = {
+      title: '"Confío más en el mercado"',
+      kicker: 'ANTONIO BÜCHI, CEO DE ENTEL:',
+      body: '<p>x</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    // Kicker text should NOT appear in any node
+    const json = JSON.stringify(nodes);
+    expect(json).not.toContain('BÜCHI');
+    expect(json).not.toContain('CEO DE ENTEL');
+  });
+
+  it('places subtitle as first text node (drives og:description)', () => {
+    const article = {
+      title: 't',
+      kicker: 'k',
+      subtitle: 'La bajada del artículo',
+      body: '<p>body</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    // First non-figure node should be the subtitle blockquote
+    const firstTextNode = nodes.find((n: any) =>
+      typeof n === 'object' && n.tag !== 'figure'
+    );
+    expect(firstTextNode).toBeDefined();
+    expect((firstTextNode as any).tag).toBe('blockquote');
+    expect((firstTextNode as any).children[0]).toContain('bajada');
+  });
+});
