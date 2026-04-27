@@ -79,8 +79,20 @@ interface NewsApiResponse {
 export interface PageArticleInfo {
   id: string;
   title: string;
+  name: string;
   width: number;
   height: number;
+  noExport?: boolean;
+}
+
+export interface StoryGroup {
+  anchor: PageArticleInfo;
+  recuadros: PageArticleInfo[];
+}
+
+export interface PageArticleGrouping {
+  groups: StoryGroup[];
+  standalone: PageArticleInfo[];
 }
 
 // Detecta el tipo de URL y extrae los parámetros necesarios
@@ -477,6 +489,7 @@ export function isPageUrl(url: string): boolean {
 export async function fetchPageArticles(url: string): Promise<{
   articles: PageArticleInfo[];
   date: string;
+  pageId: string;
   sectionName: string;
   page: number;
 } | null> {
@@ -491,19 +504,21 @@ export async function fetchPageArticles(url: string): Promise<{
 
   const data = await response.json();
 
-  // Filtrar artículos que no son para web (name contiene NO_WEB)
   const articles: PageArticleInfo[] = (data.articles || [])
-    .filter((a: any) => !a.name?.includes('NO_WEB') && a.id && a.title)
     .map((a: any) => ({
       id: a.id,
-      title: (a.title || '').replace(/<\/?highlight>/gi, '').trim(),
+      title: (a.title || '').toString(),
+      name: a.name || '',
       width: a.width || 0,
       height: a.height || 0,
-    }));
+      noExport: a.noExport === true,
+    }))
+    .filter((a: PageArticleInfo) => a.id && a.title);
 
   return {
     articles,
     date: parsed.date,
+    pageId: parsed.pageId,
     sectionName: data.category_name || data.section_name || '',
     page: data.page || 0,
   };
@@ -587,4 +602,58 @@ export function parseArticleName(name: string): ParsedArticleName {
   }
 
   return { topicKey, isRecuadro, recuadroIndex, normalizedKey, isValid: true };
+}
+
+export function groupPageArticles(articles: PageArticleInfo[]): PageArticleGrouping {
+  const valid = articles.filter(a => {
+    if (!a.name) return false;
+    if (a.noExport === true) return false;
+    if (a.name.startsWith('NO_WEB_')) return false;
+    if (!parseArticleName(a.name).isValid) return false;
+    return true;
+  });
+
+  const anchors = new Map<string, PageArticleInfo>();
+  const recuadrosByKey = new Map<string, PageArticleInfo[]>();
+
+  for (const a of valid) {
+    const parsed = parseArticleName(a.name);
+    if (parsed.isRecuadro) {
+      const arr = recuadrosByKey.get(parsed.normalizedKey) || [];
+      arr.push(a);
+      recuadrosByKey.set(parsed.normalizedKey, arr);
+    } else {
+      anchors.set(parsed.normalizedKey, a);
+    }
+  }
+
+  const groups: StoryGroup[] = [];
+  const consumedAnchorKeys = new Set<string>();
+  const looseStandalones: PageArticleInfo[] = [];
+
+  for (const [key, recuadros] of recuadrosByKey) {
+    const anchor = anchors.get(key);
+    if (anchor) {
+      const sorted = recuadros.slice().sort((a, b) => {
+        const ai = parseArticleName(a.name).recuadroIndex || 0;
+        const bi = parseArticleName(b.name).recuadroIndex || 0;
+        return ai - bi;
+      });
+      groups.push({ anchor, recuadros: sorted });
+      consumedAnchorKeys.add(key);
+    } else {
+      looseStandalones.push(...recuadros);
+    }
+  }
+
+  for (const [key, anchor] of anchors) {
+    if (!consumedAnchorKeys.has(key)) {
+      looseStandalones.push(anchor);
+    }
+  }
+
+  const orderIndex = new Map(articles.map((a, i) => [a.id, i]));
+  looseStandalones.sort((a, b) => (orderIndex.get(a.id) || 0) - (orderIndex.get(b.id) || 0));
+
+  return { groups, standalone: looseStandalones };
 }
