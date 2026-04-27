@@ -199,6 +199,32 @@ describe('articleToNodes — blockquote and aside rendering', () => {
   });
 });
 
+describe('articleToNodes — hr rendering', () => {
+  it('emits hr node when body contains <hr>', () => {
+    const article = {
+      title: 't',
+      body: '<p>before</p><hr><p>after</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const hr = nodes.find((n: any) => typeof n === 'object' && n.tag === 'hr');
+    expect(hr).toBeDefined();
+  });
+
+  it('emits multiple hr separators in story group output', () => {
+    const article = {
+      title: 't',
+      body: '<p>anchor body</p>\n<hr>\n<h3>R1</h3><p>r1 body</p>\n<hr>\n<h3>R2</h3><p>r2 body</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const hrs = nodes.filter((n: any) => typeof n === 'object' && n.tag === 'hr');
+    expect(hrs).toHaveLength(2);
+  });
+});
+
 describe('articleToNodes — byline rendering', () => {
   it('renders author as italic "Por X" paragraph', () => {
     const article = {

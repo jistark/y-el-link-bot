@@ -701,7 +701,7 @@ export async function extractStoryGroup(
     if (res.status === 'fulfilled') {
       const r = res.value;
       const titleHtml = r.title ? `<h3>${escapeHtmlMinimal(r.title)}</h3>` : '';
-      combinedBody += `\n<aside>${titleHtml}${r.body}</aside>`;
+      combinedBody += `\n<hr>\n${titleHtml}${r.body}`;
     } else {
       console.error(JSON.stringify({
         event: 'story_group_recuadro_failed',
@@ -711,7 +711,7 @@ export async function extractStoryGroup(
         timestamp: new Date().toISOString(),
       }));
       const titleClean = sanitizeAndStripMercurio(recuadroMeta.title);
-      combinedBody += `\n<aside><p><i>(Recuadro «${escapeHtmlMinimal(titleClean)}» no disponible)</i></p></aside>`;
+      combinedBody += `\n<hr>\n<p><i>(Recuadro «${escapeHtmlMinimal(titleClean)}» no disponible)</i></p>`;
     }
   }
 
@@ -730,13 +730,13 @@ export async function extractStoryGroup(
     }));
     let truncated = false;
     while (Buffer.byteLength(combinedBody, 'utf8') > 45_000) {
-      const lastAside = combinedBody.lastIndexOf('<aside>');
-      if (lastAside === -1) break;
-      combinedBody = combinedBody.slice(0, lastAside).trimEnd();
+      const lastHr = combinedBody.lastIndexOf('<hr>');
+      if (lastHr === -1) break;
+      combinedBody = combinedBody.slice(0, lastHr).trimEnd();
       truncated = true;
     }
     if (truncated) {
-      combinedBody += '\n<p><i>(Continúa en el original →)</i></p>';
+      combinedBody += '\n<hr>\n<p><i>(Continúa en el original →)</i></p>';
     }
   }
 

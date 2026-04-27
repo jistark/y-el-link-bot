@@ -316,7 +316,7 @@ const ALLOWED_TAGS = new Set([
   'p', 'b', 'strong', 'i', 'em', 'a', 'mark', 'u', 's',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'img', 'figure', 'figcaption', 'iframe',
-  'br', 'div', 'span', 'section', 'article', 'aside',
+  'br', 'hr', 'div', 'span', 'section', 'article', 'aside',
   'blockquote', 'ul', 'ol', 'li',
   'table', 'tr', 'td', 'th', 'thead', 'tbody',
   'video', 'source', 'audio',
@@ -367,6 +367,9 @@ function htmlToNodes(html: string): TelegraphNode[] {
   // Paso 3b: Extraer iframes (YouTube, Vimeo)
   normalized = normalized.replace(/<iframe\s+[^>]*src="([^"]+)"[^>]*><\/iframe>/gi, '\n<IFRAME>$1</IFRAME>\n');
   normalized = normalized.replace(/<iframe\s+[^>]*src="([^"]+)"[^>]*>/gi, '\n<IFRAME>$1</IFRAME>\n');
+
+  // Paso 3c: Extraer <hr>
+  normalized = normalized.replace(/<hr\s*\/?>/gi, '\n<HR>\n');
 
   // Paso 4: Extraer figures
   normalized = normalized.replace(
@@ -420,6 +423,12 @@ function htmlToNodes(html: string): TelegraphNode[] {
         tag: 'figure',
         children: [{ tag: 'iframe', attrs: { src: iframeMatch[1] } }],
       });
+      continue;
+    }
+
+    // Horizontal rule
+    if (block.match(/^<HR>$/i)) {
+      nodes.push({ tag: 'hr' });
       continue;
     }
 
