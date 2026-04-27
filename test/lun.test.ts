@@ -32,3 +32,20 @@ describe('buildLunPageCoverUrl', () => {
     );
   });
 });
+
+describe('LUN video extraction', () => {
+  it('matches video filename from div id="video"', () => {
+    const html = '<div id="video">13_teleferico_pio_nono_lun.mp4</div>';
+    const m = html.match(/<div id="video">([^<]+)<\/div>/);
+    expect(m).not.toBeNull();
+    expect(m![1].trim()).toBe('13_teleferico_pio_nono_lun.mp4');
+    const fullUrl = `https://images.lun.com/luncontents/Videos/${m![1].trim()}`;
+    expect(fullUrl).toBe('https://images.lun.com/luncontents/Videos/13_teleferico_pio_nono_lun.mp4');
+  });
+
+  it('does not match when video div is absent', () => {
+    const html = '<div id="autor">Foo Bar</div>';
+    const m = html.match(/<div id="video">([^<]+)<\/div>/);
+    expect(m).toBeNull();
+  });
+});

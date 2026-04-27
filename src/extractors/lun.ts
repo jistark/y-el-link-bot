@@ -70,6 +70,7 @@ interface ExtractedContent {
   bajada: string | null;
   texto: string | null;
   seccion: string | null;
+  videoUrl: string | null;
   autor: string | null;
   imagenes: string[];
   newsId: string | null;
@@ -83,6 +84,7 @@ function extractLunContent(html: string): ExtractedContent {
     bajada: null,
     texto: null,
     seccion: null,
+    videoUrl: null,
     autor: null,
     imagenes: [],
     newsId: null,
@@ -104,6 +106,15 @@ function extractLunContent(html: string): ExtractedContent {
   // Autor from div id="autor"
   m = html.match(/<div id="autor">([^<]+)<\/div>/);
   if (m) result.autor = decodeHtmlEntities(m[1].trim());
+
+  // Video URL from div id="video"
+  m = html.match(/<div id="video">([^<]+)<\/div>/);
+  if (m) {
+    const filename = m[1].trim();
+    if (filename) {
+      result.videoUrl = `https://images.lun.com/luncontents/Videos/${filename}`;
+    }
+  }
 
   // Fecha from div id="fecha_publicacion_av"
   m = html.match(/<div id="fecha_publicacion_av">([^<]+)<\/div>/);
@@ -199,6 +210,9 @@ export async function extract(url: string): Promise<Article> {
 
   // Construir body con subtitulo y bajada si existen
   let body = '';
+  if (content.videoUrl) {
+    body += `<figure><video src="${content.videoUrl}"></video></figure>\n`;
+  }
   if (content.subtitulo) {
     body += `<p><strong>${content.subtitulo}</strong></p>\n`;
   }
