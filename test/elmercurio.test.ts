@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { sanitizeMercurioMarkup, parseArticleName } from '../src/extractors/elmercurio.js';
+import { sanitizeMercurioMarkup, parseArticleName, groupPageArticles } from '../src/extractors/elmercurio.js';
 import buchiAnchor from './fixtures/elmercurio_buchi_anchor.json';
+import b12Fixture from './fixtures/elmercurio_b12_2026-04-25.json';
+import b1Fixture from './fixtures/elmercurio_b1_2026-04-25.json';
 
 describe('sanitizeMercurioMarkup', () => {
   it('converts <P> to <p>', () => {
@@ -122,5 +124,47 @@ describe('parseArticleName', () => {
 
   it('handles names with periods in the middle', () => {
     expect(parseArticleName('Chile.Foo.Bar.AR1').isValid).toBe(false);
+  });
+});
+
+describe('groupPageArticles', () => {
+  it('detects Büchi story group on B12 page (1 anchor + 4 recuadros)', () => {
+    const articles = b12Fixture.articles.map((a: any) => ({
+      id: a.id, title: a.title, name: a.name, width: a.width, height: a.height,
+      noExport: a.noExport,
+    }));
+    const result = groupPageArticles(articles);
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0].anchor.title).toContain('Confío');
+    expect(result.groups[0].recuadros).toHaveLength(4);
+    const indices = result.groups[0].recuadros.map(r => parseArticleName(r.name).recuadroIndex);
+    expect(indices).toEqual([1, 2, 3, 4]);
+    expect(result.standalone).toHaveLength(0);
+  });
+
+  it('returns no groups on B1 page (banners + NO_WEB filtered, no recuadros)', () => {
+    const articles = b1Fixture.articles.map((a: any) => ({
+      id: a.id, title: a.title, name: a.name, width: a.width, height: a.height,
+      noExport: a.noExport,
+    }));
+    const result = groupPageArticles(articles);
+    expect(result.groups).toHaveLength(0);
+    expect(result.standalone.length).toBeGreaterThanOrEqual(2);
+    expect(result.standalone.length).toBeLessThanOrEqual(4);
+    expect(result.standalone.find(a => a.name.endsWith('.AR1'))).toBeUndefined();
+    expect(result.standalone.find(a => a.name.startsWith('NO_WEB_'))).toBeUndefined();
+  });
+
+  it('treats orphan recuadros (no anchor) as standalone', () => {
+    const articles = [
+      { id: 'a', title: 'orphan', name: 'T9_2_X_Foo_R1.ART', width: 1, height: 1, noExport: false },
+    ];
+    const result = groupPageArticles(articles);
+    expect(result.groups).toHaveLength(0);
+    expect(result.standalone).toHaveLength(1);
+  });
+
+  it('returns empty for empty input', () => {
+    expect(groupPageArticles([])).toEqual({ groups: [], standalone: [] });
   });
 });
