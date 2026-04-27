@@ -365,6 +365,14 @@ export function articleToNodes(article: Article): TelegraphNode[] {
     nodes.push({ tag: 'p', children: [{ tag: 'b', children: [decodeEntities(article.kicker)] }] });
   }
 
+  // Byline (author from the byline field)
+  if (article.author) {
+    nodes.push({
+      tag: 'p',
+      children: [{ tag: 'i', children: [`Por ${decodeEntities(article.author)}`] }],
+    });
+  }
+
   // Subtítulo como blockquote
   if (article.subtitle) {
     nodes.push({ tag: 'blockquote', children: [decodeEntities(article.subtitle)] });

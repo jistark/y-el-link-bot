@@ -198,3 +198,40 @@ describe('articleToNodes — blockquote and aside rendering', () => {
     expect(children.find((c: any) => c.tag === 'p')).toBeDefined();
   });
 });
+
+describe('articleToNodes — byline rendering', () => {
+  it('renders author as italic "Por X" paragraph', () => {
+    const article = {
+      title: 't',
+      author: 'Eduardo Olivares y César Sottovia',
+      body: '<p>x</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const byline = nodes.find((n: any) =>
+      typeof n === 'object'
+      && n.tag === 'p'
+      && Array.isArray(n.children)
+      && n.children.some((c: any) => c?.tag === 'i' && c.children?.[0]?.startsWith('Por '))
+    );
+    expect(byline).toBeDefined();
+  });
+
+  it('does not emit byline node when author is undefined', () => {
+    const article = {
+      title: 't',
+      body: '<p>x</p>',
+      url: 'x',
+      source: 'elmercurio' as const,
+    };
+    const nodes = articleToNodes(article);
+    const hasBylineP = nodes.some((n: any) =>
+      typeof n === 'object'
+      && n.tag === 'p'
+      && Array.isArray(n.children)
+      && n.children.some((c: any) => c?.tag === 'i' && c.children?.[0]?.startsWith('Por '))
+    );
+    expect(hasBylineP).toBe(false);
+  });
+});
