@@ -2,6 +2,111 @@ import type { Article, TelegraphNode, TelegraphPage } from '../types.js';
 import { decodeEntities } from '../utils/shared.js';
 
 const API_URL = 'https://api.telegra.ph';
+const UPLOAD_URL = 'https://telegra.ph/upload';
+
+// In-memory cache of original URL → telegra.ph URL to avoid re-uploading
+// when an image is referenced by multiple articles in a session.
+const uploadCache = new Map<string, string>();
+
+/**
+ * Downloads an image from an external URL and uploads it to Telegraph's CDN,
+ * returning the new telegra.ph URL. Falls back to the original URL on any failure.
+ * Telegraph's /upload endpoint has a 5MB file size limit.
+ */
+async function mirrorToTelegraph(externalUrl: string): Promise<string> {
+  if (!externalUrl || !externalUrl.startsWith('http')) return externalUrl;
+  if (externalUrl.startsWith('https://telegra.ph/file/')) return externalUrl;
+
+  const cached = uploadCache.get(externalUrl);
+  if (cached) return cached;
+
+  try {
+    const fetchResp = await fetch(externalUrl, { signal: AbortSignal.timeout(8_000) });
+    if (!fetchResp.ok) return externalUrl;
+
+    const blob = await fetchResp.blob();
+    if (blob.size === 0 || blob.size > 5 * 1024 * 1024) return externalUrl;
+
+    const formData = new FormData();
+    formData.append('file', blob);
+
+    const uploadResp = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      body: formData,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!uploadResp.ok) return externalUrl;
+
+    const data = await uploadResp.json() as Array<{ src?: string }>;
+    if (!Array.isArray(data) || !data[0]?.src) return externalUrl;
+
+    const newUrl = `https://telegra.ph${data[0].src}`;
+    uploadCache.set(externalUrl, newUrl);
+    return newUrl;
+  } catch (err) {
+    console.error(JSON.stringify({
+      event: 'telegraph_upload_failed',
+      url: externalUrl,
+      error: err instanceof Error ? err.message : String(err),
+      timestamp: new Date().toISOString(),
+    }));
+    return externalUrl;
+  }
+}
+
+async function mirrorArticleImages(article: Article): Promise<Article> {
+  const tasks: Array<Promise<void>> = [];
+  const updated: Article = {
+    ...article,
+    coverImage: article.coverImage ? { ...article.coverImage } : undefined,
+    images: article.images ? article.images.map(i => ({ ...i })) : undefined,
+  };
+
+  if (updated.coverImage?.url) {
+    tasks.push(
+      mirrorToTelegraph(updated.coverImage.url).then(u => {
+        updated.coverImage!.url = u;
+      })
+    );
+  }
+  if (updated.images) {
+    for (const img of updated.images) {
+      tasks.push(
+        mirrorToTelegraph(img.url).then(u => { img.url = u; })
+      );
+    }
+  }
+
+  // Mirror any <img> URLs embedded inside the body HTML (e.g., from recuadros
+  // composed by extractStoryGroup). We replace them in-place via regex.
+  if (updated.body) {
+    const urlsInBody = Array.from(
+      updated.body.matchAll(/<img\s+[^>]*src="(https?:\/\/[^"]+)"/gi),
+      m => m[1]
+    );
+    const uniqueBodyUrls = [...new Set(urlsInBody)];
+    if (uniqueBodyUrls.length > 0) {
+      const mirrored: Record<string, string> = {};
+      await Promise.all(
+        uniqueBodyUrls.map(async u => {
+          mirrored[u] = await mirrorToTelegraph(u);
+        })
+      );
+      let newBody = updated.body;
+      for (const [orig, mir] of Object.entries(mirrored)) {
+        if (orig !== mir) {
+          // Escape special regex chars in the original URL
+          const escaped = orig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          newBody = newBody.replace(new RegExp(escaped, 'g'), mir);
+        }
+      }
+      updated.body = newBody;
+    }
+  }
+
+  await Promise.all(tasks);
+  return updated;
+}
 
 // Diccionario de palabras cortas (max 5 chars) en español e inglés
 const WORDS = [
@@ -411,8 +516,11 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
     throw new Error('TELEGRAPH_ACCESS_TOKEN no configurado');
   }
 
-  const content = articleToNodes(article);
-  const slug = generateSlug(article.source);
+  // Mirror external images to Telegraph CDN (fail-soft: keeps original URLs on failure)
+  const mirrored = await mirrorArticleImages(article);
+
+  const content = articleToNodes(mirrored);
+  const slug = generateSlug(mirrored.source);
 
   // Paso 1: Crear página con slug como título (para obtener path corto)
   const createResponse = await fetch(`${API_URL}/createPage`, {
@@ -421,8 +529,8 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
     body: JSON.stringify({
       access_token: token,
       title: slug,
-      author_name: getSourceName(article.source),
-      author_url: article.url,
+      author_name: getSourceName(mirrored.source),
+      author_url: mirrored.url,
       content,
       return_content: false,
     }),
@@ -443,9 +551,9 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
     body: JSON.stringify({
       access_token: token,
       path,
-      title: buildFullTitle(article),
-      author_name: getSourceName(article.source),
-      author_url: article.url,
+      title: buildFullTitle(mirrored),
+      author_name: getSourceName(mirrored.source),
+      author_url: mirrored.url,
       content,
       return_content: false,
     }),
