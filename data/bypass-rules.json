@@ -1,8 +1,10 @@
 {
   "_meta": {
-    "compiled": "2026-04-17T19:30:23.104Z",
-    "count": 932,
-    "source": "bypass-paywalls-chrome-clean sites.js"
+    "compiled": "2026-05-09T15:39:09.068Z",
+    "count": 934,
+    "source": "bypass-paywalls-chrome-clean sites.js",
+    "upstream_version": "4.3.6.6",
+    "upstream_sha256": "f9292876e6d1b40dd871786d309d87506ad0e3cd658fc0af9f730cfbfc880a09"
   },
   "60millions-mag.com": {
     "allow_cookies": true
@@ -515,10 +517,7 @@
   "dailyherald.com": {
     "allow_cookies": true
   },
-  "dailymail.co.uk": {
-    "allow_cookies": true
-  },
-  "mailonsunday.co.uk": {
+  "dailymail.com": {
     "allow_cookies": true
   },
   "thisismoney.co.uk": {
@@ -1472,6 +1471,9 @@
   "lavanguardia.com": {
     "allow_cookies": true
   },
+  "lance.com.br": {
+    "allow_cookies": true
+  },
   "profi.de": {
     "allow_cookies": true
   },
@@ -1632,7 +1634,7 @@
     "allow_cookies": true
   },
   "marketwatch.com": {
-    "referer_custom": "https: nullwww.drudgereport.com/",
+    "referer_custom": "https://www.drudgereport.com/",
     "allow_cookies": true
   },
   "bnd.com": {
@@ -1799,6 +1801,12 @@
     "allow_cookies": true
   },
   "nation.africa": {
+    "allow_cookies": true
+  },
+  "nationalgeographic.it": {
+    "allow_cookies": true
+  },
+  "nationalgeographic.nl": {
     "allow_cookies": true
   },
   "nationalgeographic.com": {
@@ -2083,8 +2091,7 @@
     "allow_cookies": true
   },
   "beobachter.ch": {
-    "allow_cookies": true,
-    "useragent": "googlebot"
+    "allow_cookies": true
   },
   "blick.ch": {
     "allow_cookies": true
@@ -2556,7 +2563,7 @@
     "allow_cookies": true
   },
   "wsj.com": {
-    "referer_custom": "https: nullwww.drudgereport.com/",
+    "referer_custom": "https://www.drudgereport.com/",
     "allow_cookies": true
   },
   "washingtonpost.com": {
@@ -2711,16 +2718,29 @@
     "allow_cookies": true
   },
   "cdn.ampproject.org": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "cdn.ampproject.org",
+      "cambridge.org",
+      "cmjornal.pt"
+    ]
   },
   "amplitude.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "amplitude.com"
+    ]
   },
   "blueconic.net": {
     "allow_cookies": true
   },
   "cxense.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "journaldemontreal.com",
+      "journaldequebec.com",
+      "wsj.com"
+    ]
   },
   "ensighten.com": {
     "allow_cookies": true
@@ -2738,34 +2758,63 @@
     "allow_cookies": true
   },
   "memberstack.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "memberstack.com"
+    ]
   },
   "omeda.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "omeda.com"
+    ]
   },
   "onecount.net": {
     "allow_cookies": true
   },
   "pelcro.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "pelcro.com"
+    ]
   },
   "piano.io": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "piano.io",
+      "automobilwoche.de",
+      "frontline.thehindu.com",
+      "hbr.org",
+      "japantimes.co.jp",
+      "nacion.com"
+    ]
   },
   "pico.tools": {
     "allow_cookies": true
   },
   "poool.fr": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "poool.fr"
+    ]
   },
   "qiota.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "qiota.com"
+    ]
   },
   "sophi.io": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "sophi.io"
+    ]
   },
   "steadyhq.com": {
-    "allow_cookies": true
+    "allow_cookies": true,
+    "excluded_domains": [
+      "steadyhq.com"
+    ]
   },
   "zephr.com": {
     "allow_cookies": true

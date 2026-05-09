@@ -1,0 +1,71 @@
+name: Bypass-paywalls upstream drift
+
+# Detects when bypass-paywalls-chrome-clean's sites.js has changed since
+# data/bypass-rules.json was compiled. Opens an issue so we know to
+# re-run scripts/compile-rules.ts against the new upstream.
+#
+# Upstream moved off GitHub after a takedown; primary mirror is bpc-clone
+# on GitHub. If that mirror disappears, update UPSTREAM_URL below.
+# Verified mirror as of 2026-05-09: github.com/bpc-clone/bpc_chromium
+
+on:
+  schedule:
+    - cron: '0 14 * * MON'  # Lunes 14:00 UTC
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    env:
+      UPSTREAM_URL: 'https://raw.githubusercontent.com/bpc-clone/bpc_chromium/master/sites.js'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute upstream sha256
+        id: upstream
+        run: |
+          curl -sLf "$UPSTREAM_URL" -o /tmp/sites.js
+          remote=$(sha256sum /tmp/sites.js | awk '{print $1}')
+          echo "sha256=$remote" >> "$GITHUB_OUTPUT"
+          echo "Remote sha256: $remote"
+
+      - name: Read local sha256
+        id: local
+        run: |
+          local=$(jq -r '._meta.upstream_sha256 // ""' data/bypass-rules.json)
+          echo "sha256=$local" >> "$GITHUB_OUTPUT"
+          echo "Local sha256: $local"
+
+      - name: Compare and report
+        if: steps.upstream.outputs.sha256 != steps.local.outputs.sha256
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REMOTE: ${{ steps.upstream.outputs.sha256 }}
+          LOCAL: ${{ steps.local.outputs.sha256 }}
+        run: |
+          # Skip if an open drift issue already exists (avoid weekly spam).
+          existing=$(gh issue list --state open --label upstream-drift --json number --jq '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing is already open — skipping."
+            exit 0
+          fi
+          gh issue create \
+            --title "bypass-paywalls upstream drift detected" \
+            --label upstream-drift \
+            --body "$(cat <<EOF
+          The compiled bypass-rules.json is out of date with upstream.
+
+          - **Local sha256**: \`$LOCAL\`
+          - **Remote sha256**: \`$REMOTE\`
+          - **Upstream URL**: $UPSTREAM_URL
+
+          To resolve:
+          1. Download the latest \`sites.js\` from the upstream URL above.
+          2. Run \`bun run scripts/compile-rules.ts /path/to/sites.js\`.
+          3. Inspect diff with \`jq -S\` and \`bun test test/compile-rules.test.ts\`.
+          4. Commit the regenerated \`data/bypass-rules.json\` and close this issue.
+          EOF
+          )"
