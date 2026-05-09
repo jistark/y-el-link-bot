@@ -1,4 +1,5 @@
 import type { Article } from '../types.js';
+import { escapeHtmlMinimal } from '../utils/shared.js';
 
 // Whitelist-based sanitizer for El Mercurio markup tags.
 // Converts known proprietary tags to standard HTML; strips unknown tags
@@ -41,6 +42,17 @@ export function sanitizeMercurioMarkup(input: string): string {
 }
 
 // Respuesta de la API JSON de digital.elmercurio.com
+export interface MercurioImage {
+  path: string;
+  caption?: string;
+  credits?: string;
+  name?: string;
+  noExport?: boolean;
+  infographic?: boolean;
+  width?: number;
+  height?: number;
+}
+
 interface MercurioJsonArticle {
   title?: string;
   head?: string;
@@ -49,16 +61,30 @@ interface MercurioJsonArticle {
   byline?: string;
   body?: string;
   quotes?: { quote: string }[];
-  images?: {
-    path: string;
-    caption?: string;
-    credits?: string;
-    name?: string;
-    noExport?: boolean;
-    infographic?: boolean;
-    width?: number;
-    height?: number;
-  }[];
+  images?: MercurioImage[];
+}
+
+/**
+ * Pure-function image filter exposed for unit tests.
+ *
+ * Rules:
+ *  - Treat absent `noExport` / `infographic` as INCLUDE (only `=== true`
+ *    excludes). Many real records omit these fields entirely.
+ *  - Drop images smaller than 100×100 (decorative glyphs, print ornaments).
+ *  - DO NOT filter by `name` starting with `NO_WEB_` — main article photos
+ *    use that prefix.
+ */
+export function filterMercurioImages(
+  images: MercurioImage[] | undefined,
+): MercurioImage[] {
+  if (!images) return [];
+  return images.filter(img =>
+    img.noExport !== true
+    && img.infographic !== true
+    && img.path
+    && (img.width ?? 0) >= 100
+    && (img.height ?? 0) >= 100
+  );
 }
 
 // Respuesta de newsapi.ecn.cl (igual que La Segunda)
@@ -207,29 +233,75 @@ function processMacros(text: string): string {
     '<figure><img src="$1"></figure>'
   );
 
-  // {ACCION ...} → eliminar
-  processed = processed.replace(/\{ACCION[^}]*\}/gi, '');
+  // {ACCION ...} → eliminar (multilínea OK)
+  processed = processed.replace(/\{ACCION[\s\S]*?\}/gi, '');
 
-  // Otras macros desconocidas → eliminar
-  processed = processed.replace(/\{[A-Z]+[^}]*\}/g, '');
+  // Otras macros desconocidas → eliminar (multilínea OK)
+  processed = processed.replace(/\{[A-Z]+[\s\S]*?\}/g, '');
 
   return processed;
 }
 
 // Extrae desde la API JSON de digital.elmercurio.com
-async function extractFromDigitalJson(date: string, articleId: string): Promise<Article> {
+async function extractFromDigitalJson(date: string, articleId: string, pageId?: string): Promise<Article> {
   const jsonUrl = `https://digital.elmercurio.com/${date}/content/articles/${articleId}.json`;
   const response = await fetch(jsonUrl, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Error al obtener artículo: ${response.status}`);
   }
-  return extractFromDigitalJsonResponse(await response.json(), date, articleId);
+  return extractFromDigitalJsonResponse(await response.json(), date, articleId, pageId);
+}
+
+/**
+ * Build the printed-page-cover URL for a given digital edition page.
+ * Returns null when pageId is missing — single-article URLs without a
+ * page context don't have a printed-page concept.
+ */
+export function buildMercurioPageCoverUrl(date: string, pageId: string | undefined): string | null {
+  if (!pageId) return null;
+  return `https://digital.elmercurio.com/${date}/content/pages/img/mid/${pageId}.jpg`;
+}
+
+/**
+ * Apply the explicit-cover policy used by both single-article and
+ * story-group extraction paths: first per-article image becomes the
+ * cover, the rest stay in `images`, and the printed-page image is
+ * appended as a footer figure for context. When the article has no
+ * per-article images, the printed page is the cover (no footer).
+ *
+ * Returns the (possibly-modified) body, the cover, and the remaining
+ * image array. Caller wires these into the returned Article.
+ */
+export function applyMercurioCoverPolicy(
+  body: string,
+  images: Article['images'],
+  pageCoverUrl: string | null,
+): { body: string; coverImage: Article['coverImage']; images: Article['images'] } {
+  if (images && images.length > 0) {
+    const [first, ...rest] = images;
+    let outBody = body;
+    if (pageCoverUrl) {
+      outBody += `\n<hr>\n<figure><img src="${pageCoverUrl}"><figcaption>Edición impresa</figcaption></figure>`;
+    }
+    return {
+      body: outBody,
+      coverImage: { url: first.url, caption: first.caption },
+      images: rest.length > 0 ? rest : undefined,
+    };
+  }
+  // No per-article images.
+  return {
+    body,
+    coverImage: pageCoverUrl ? { url: pageCoverUrl } : undefined,
+    images: undefined,
+  };
 }
 
 function extractFromDigitalJsonResponse(
   data: MercurioJsonArticle,
   date: string,
   articleId: string,
+  pageId?: string,
 ): Article {
   // Title: prefer `title`, fall back to `head`. Sanitize either way.
   const rawTitle = data.title || data.head;
@@ -266,17 +338,7 @@ function extractFromDigitalJsonResponse(
     ? `${quoteBlocks}\n${sanitizedBody}`
     : sanitizedBody;
 
-  // Images: filter by noExport=false AND infographic=false
-  // (DO NOT filter by name starting with NO_WEB_; main article photos use that prefix)
-  // Reject tiny images (decorative glyphs, print ornaments) under 100px in either dimension.
-  const images = (data.images || [])
-    .filter(img =>
-      img.noExport === false
-      && img.infographic === false
-      && img.path
-      && (img.width ?? 0) >= 100
-      && (img.height ?? 0) >= 100
-    )
+  const images = (filterMercurioImages(data.images) || [])
     .map(img => {
       const url = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${img.path}`;
       let caption = img.caption ? sanitizeAndStripMercurio(img.caption) : undefined;
@@ -286,13 +348,22 @@ function extractFromDigitalJsonResponse(
       return { url, caption };
     });
 
+  // Apply cover policy when we know the page (selector flow); otherwise
+  // fall back to legacy "first image is og:image" behavior, which leaves
+  // coverImage unset and Telegraph picks the first <img> automatically.
+  const pageCoverUrl = buildMercurioPageCoverUrl(date, pageId);
+  const policy = pageId
+    ? applyMercurioCoverPolicy(body, images.length > 0 ? images : undefined, pageCoverUrl)
+    : { body, coverImage: undefined, images: images.length > 0 ? images : undefined };
+
   return {
     title,
     kicker,
     subtitle,
     author,
-    body,
-    images: images.length > 0 ? images : undefined,
+    body: policy.body,
+    images: policy.images,
+    coverImage: policy.coverImage,
     url: `https://digital.elmercurio.com/${date}/content/articles/${articleId}`,
     source: 'elmercurio',
   };
@@ -537,9 +608,12 @@ export async function fetchPageArticles(url: string): Promise<{
   };
 }
 
-// Extrae un artículo específico por ID y fecha (para uso desde el selector de página)
-export async function extractByArticleId(articleId: string, date: string): Promise<Article> {
-  return extractFromDigitalJson(date, articleId);
+// Extrae un artículo específico por ID y fecha (para uso desde el selector de página).
+// Cuando pageId está disponible (flujo de página, no URL directa al artículo),
+// se aplica la cover-policy con printed-page footer — la misma que usa
+// extractStoryGroup para reportajes con recuadros.
+export async function extractByArticleId(articleId: string, date: string, pageId?: string): Promise<Article> {
+  return extractFromDigitalJson(date, articleId, pageId);
 }
 
 export async function extract(url: string): Promise<Article> {
@@ -715,19 +789,15 @@ export async function extractStoryGroup(
     }
   }
 
-  // Cover image priority (mirrors LUN behavior):
-  // - If anchor has body images, use first body image as implicit cover
-  //   (og:image becomes the first <img> in the document). Append the
-  //   printed-page edition as a footer figure.
-  // - If no anchor images, fall back to printed-page image as the cover.
-  const pageCoverUrl = `https://digital.elmercurio.com/${date}/content/pages/img/mid/${pageId}.jpg`;
-  let coverImage: Article['coverImage'];
-  if (anchor.images && anchor.images.length > 0) {
-    coverImage = undefined;
-    combinedBody += `\n<hr>\n<figure><img src="${pageCoverUrl}"><figcaption>Edición impresa</figcaption></figure>`;
-  } else {
-    coverImage = { url: pageCoverUrl };
-  }
+  // Cover policy: shared with single-article extractByArticleId via
+  // applyMercurioCoverPolicy. First per-article image becomes the
+  // explicit cover, rest stay in `images`, printed-page image appended
+  // as footer for context. No anchor images → printed page is the cover.
+  const pageCoverUrl = buildMercurioPageCoverUrl(date, pageId);
+  const policy = applyMercurioCoverPolicy(combinedBody, anchor.images, pageCoverUrl);
+  combinedBody = policy.body;
+  const coverImage = policy.coverImage;
+  const outImages = policy.images;
 
   const sizeBytes = Buffer.byteLength(combinedBody, 'utf8');
   if (sizeBytes > 50_000) {
@@ -756,13 +826,10 @@ export async function extractStoryGroup(
     subtitle: anchor.subtitle,
     author: anchor.author,
     body: combinedBody,
-    images: anchor.images,
+    images: outImages,
     coverImage,
     url: `https://digital.elmercurio.com/${date}/content/articles/${group.anchor.id}`,
     source: 'elmercurio',
   };
 }
 
-function escapeHtmlMinimal(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}

@@ -31,6 +31,12 @@ export interface PollerConfig<T extends BaseRssItem = BaseRssItem> {
   parseItems: (xml: string) => T[];
   filterNew: (items: T[], posted: Set<string>) => T[];
   processItem: (api: Api, chatId: number, item: T, posted: Set<string>, save: () => Promise<void>) => Promise<void>;
+
+  // Optional hook called once at the start of every poll cycle, before
+  // fetching the feed. Use for periodic maintenance (e.g. sweeping expired
+  // Telegraph pages). Errors are caught and logged — they do not abort
+  // the cycle.
+  beforeFetch?: () => Promise<void>;
 }
 
 export interface PollerInstance {
@@ -55,6 +61,7 @@ export function createPoller<T extends BaseRssItem>(config: PollerConfig<T>): Po
     parseItems,
     filterNew,
     processItem,
+    beforeFetch,
   } = config;
 
   // Tracks whether we've completed the first pollOnce in this process.
@@ -105,6 +112,16 @@ export function createPoller<T extends BaseRssItem>(config: PollerConfig<T>): Po
   // --- Core ---
 
   async function pollOnce(api: Api, chatId: number, posted: Set<string>): Promise<void> {
+    if (beforeFetch) {
+      try { await beforeFetch(); }
+      catch (err: any) {
+        console.error(JSON.stringify({
+          event: `${name}_before_fetch_error`,
+          error: err?.message || String(err),
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    }
     const xml = await fetchRssFeed();
     const allItems = parseItems(xml);
     const newItems = filterNew(allItems, posted);

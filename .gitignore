@@ -4,6 +4,22 @@ dist/
 *.log
 .venv/
 
+# macOS
+.DS_Store
+
+# Python build artifacts
+**/__pycache__/
+
+# Local scratchpad / experiments
+poc/
+
+# Bot runtime state — written/read at runtime, regenerated per process.
+# Tracking these would create commit noise from production data.
+data/expirations.json
+data/registry.json
+data/*-posted.json
+data/mundial-config.json
+
 # Referencias y docs internas
 ref/
 CLAUDE.md

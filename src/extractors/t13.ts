@@ -24,31 +24,42 @@ export async function extract(url: string): Promise<Article> {
   let videoUrl: string | undefined;
   let videoDuration: string | undefined;
 
+  // Helper to walk a parsed JSON-LD value (object | array | @graph wrapper)
+  // and call back for each typed node we recognise.
+  function visit(node: unknown): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    const obj = node as Record<string, unknown>;
+    if (Array.isArray(obj['@graph'])) { (obj['@graph'] as unknown[]).forEach(visit); return; }
+    const t = obj['@type'];
+    const types = Array.isArray(t) ? t : (typeof t === 'string' ? [t] : []);
+    if (types.includes('NewsArticle') || types.includes('Article')) {
+      title = (obj.headline as string) || title;
+      subtitle = (obj.description as string) || subtitle;
+      date = (obj.datePublished as string) || date;
+      if (obj.image) {
+        const img: any = obj.image;
+        imageUrl = imageUrl || (Array.isArray(img) ? img[0] : (typeof img === 'string' ? img : img.url));
+      }
+      const a: any = obj.author;
+      if (a?.name) author = author || a.name;
+    } else if (types.includes('VideoObject')) {
+      if (!title) title = obj.name as string;
+      if (!subtitle) subtitle = obj.description as string;
+      if (!date) date = obj.uploadDate as string;
+      videoUrl = (obj.contentUrl as string) || (obj.embedUrl as string) || videoUrl;
+      videoDuration = (obj.duration as string) || videoDuration;
+      if (!imageUrl && obj.thumbnailUrl) {
+        const tu: any = obj.thumbnailUrl;
+        imageUrl = Array.isArray(tu) ? tu[0] : tu;
+      }
+    }
+  }
+
   const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json">([\s\S]+?)<\/script>/g);
   for (const match of jsonLdMatches) {
-    try {
-      const data = JSON.parse(match[1]);
-      if (data['@type'] === 'NewsArticle' || data['@type'] === 'Article') {
-        title = data.headline;
-        subtitle = data.description;
-        date = data.datePublished;
-        if (data.image) {
-          imageUrl = Array.isArray(data.image) ? data.image[0] : (typeof data.image === 'string' ? data.image : data.image.url);
-        }
-        if (data.author?.name) author = data.author.name;
-      } else if (data['@type'] === 'VideoObject') {
-        if (!title) title = data.name;
-        if (!subtitle) subtitle = data.description;
-        if (!date) date = data.uploadDate;
-        videoUrl = data.contentUrl || data.embedUrl;
-        videoDuration = data.duration;
-        if (!imageUrl && data.thumbnailUrl) {
-          imageUrl = Array.isArray(data.thumbnailUrl) ? data.thumbnailUrl[0] : data.thumbnailUrl;
-        }
-      }
-    } catch {
-      // JSON inválido
-    }
+    try { visit(JSON.parse(match[1])); }
+    catch { /* JSON inválido */ }
   }
 
   // Fallback título desde meta/HTML

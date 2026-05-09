@@ -1,5 +1,5 @@
 import type { Article } from '../types.js';
-import { type JsonLdArticle, extractAuthor, extractImage } from './helpers/json-ld.js';
+import { type JsonLdArticle, extractAuthor, extractImage, findArticleNode } from './helpers/json-ld.js';
 
 export async function extract(url: string): Promise<Article> {
   const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -10,26 +10,16 @@ export async function extract(url: string): Promise<Article> {
 
   const html = await response.text();
 
-  // Buscar todos los JSON-LD en la página
+  // Buscar todos los JSON-LD en la página. findArticleNode handles single
+  // objects, arrays, @graph envelopes, and @type as array (["NewsArticle", ...]).
   const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json">(.+?)<\/script>/gs);
 
   let article: JsonLdArticle | null = null;
 
   for (const match of jsonLdMatches) {
     try {
-      const data = JSON.parse(match[1]);
-
-      // Puede ser un array o un objeto
-      if (Array.isArray(data)) {
-        const found = data.find(d => d['@type'] === 'NewsArticle' || d['@type'] === 'Article');
-        if (found) {
-          article = found;
-          break;
-        }
-      } else if (data['@type'] === 'NewsArticle' || data['@type'] === 'Article') {
-        article = data;
-        break;
-      }
+      const found = findArticleNode(JSON.parse(match[1]));
+      if (found) { article = found; break; }
     } catch {
       // JSON inválido, continuar
     }

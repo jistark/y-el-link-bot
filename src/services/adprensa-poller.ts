@@ -6,6 +6,7 @@ import { addRegistryEntry } from './registry.js';
 import { createPoller } from './poller-base.js';
 import type { BaseRssItem } from './poller-base.js';
 import { createRssRegenKeyboard } from './rss-shared.js';
+import { scheduleExpiry, sweepExpirations } from './expirations.js';
 
 // --- Types ---
 
@@ -16,12 +17,14 @@ export interface AdprensaRssItem extends BaseRssItem {
 
 // --- Parsing ---
 
+const MAX_ITEMS_PARSED = 50;
+
 export function parseAdprensaItems(xml: string): AdprensaRssItem[] {
   const items: AdprensaRssItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
 
-  while ((match = itemRegex.exec(xml)) !== null) {
+  while ((match = itemRegex.exec(xml)) !== null && items.length < MAX_ITEMS_PARSED) {
     const block = match[1];
 
     const titleMatch = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
@@ -108,6 +111,9 @@ const poller = createPoller<AdprensaRssItem>({
   // first-poll after this change there will be ~7 backlog items. Seed
   // them instead of flooding the channel.
   coldStartThreshold: 5,
+  // Sweep expired Telegraph pages (contact lists past TTL) at the start
+  // of every cycle. Cheap when nothing is due (one file read).
+  beforeFetch: sweepExpirations,
   parseItems: parseAdprensaItems,
   filterNew(items, posted) {
     // Accept all categories (Pauta, Economía, Gobierno, Crónica, Política,
@@ -145,17 +151,12 @@ const poller = createPoller<AdprensaRssItem>({
     posted.add(item.guid);
     await save();
 
-    // Contact lists expire after 72h (contain emails/phones)
+    // Contact lists expire after 72h (contain emails/phones).
+    // Persisted to disk so the deletion survives Render restarts; the
+    // poller's pre-tick hook (see beforeFetch below) runs the sweep.
     if (contactList) {
       const LISTADO_TTL = 72 * 60 * 60 * 1000;
-      setTimeout(() => {
-        deletePage(result.path).catch(() => {});
-        console.log(JSON.stringify({
-          event: 'adprensa_listado_expired',
-          path: result.path,
-          timestamp: new Date().toISOString(),
-        }));
-      }, LISTADO_TTL);
+      await scheduleExpiry(result.path, LISTADO_TTL, 'adprensa_listado');
     }
 
     // Post Telegraph link to channel with regen button

@@ -1,5 +1,6 @@
 // Horóscopo de Yolanda Sultana desde primedigital.cl
 import { fetchBypass } from '../extractors/fetch-bypass.js';
+import { escapeHtmlMinimal } from '../utils/shared.js';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -43,13 +44,13 @@ interface HoroscopoData {
 const cache = new Map<string, { data: HoroscopoData; expires: number }>();
 const TTL = 24 * 60 * 60 * 1000;
 
-// Cleanup cada hora
+// Cleanup cada hora. .unref() para que el test runner pueda salir.
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of cache) {
     if (value.expires < now) cache.delete(key);
   }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000).unref();
 
 function findSigno(input: string): SignoInfo | null {
   const normalized = input.toLowerCase()
@@ -207,7 +208,7 @@ export function getSignosList(): string {
 export async function getHoroscopo(input: string, userName?: string): Promise<string> {
   const signo = findSigno(input);
   if (!signo) {
-    return `❌ Signo no reconocido: <b>${input}</b>\n\n🔮 Signos disponibles:\n${getSignosList()}`;
+    return `❌ Signo no reconocido: <b>${escapeHtmlMinimal(input)}</b>\n\n🔮 Signos disponibles:\n${getSignosList()}`;
   }
 
   const data = await fetchAndParse();
@@ -217,16 +218,16 @@ export async function getHoroscopo(input: string, userName?: string): Promise<st
     return `❌ No encontré el horóscopo de ${signo.name} para hoy.`;
   }
 
-  const para = userName ? ` para ${userName}` : '';
+  const para = userName ? ` para ${escapeHtmlMinimal(userName)}` : '';
   const lines = [
     `🔮 <b>Horóscopo de ${signo.name}${para}</b> ${signo.emoji}`,
-    `📅 ${data.date}`,
+    `📅 ${escapeHtmlMinimal(data.date)}`,
     '',
   ];
 
-  if (entry.amor) lines.push(`❤️ <b>AMOR:</b> ${entry.amor}`);
-  if (entry.salud) lines.push(`🏥 <b>SALUD:</b> ${entry.salud}`);
-  if (entry.dinero) lines.push(`💰 <b>DINERO:</b> ${entry.dinero}`);
+  if (entry.amor) lines.push(`❤️ <b>AMOR:</b> ${escapeHtmlMinimal(entry.amor)}`);
+  if (entry.salud) lines.push(`🏥 <b>SALUD:</b> ${escapeHtmlMinimal(entry.salud)}`);
+  if (entry.dinero) lines.push(`💰 <b>DINERO:</b> ${escapeHtmlMinimal(entry.dinero)}`);
   if (entry.color) lines.push(`🎨 <b>COLOR:</b> ${entry.color}`);
   if (entry.numero) lines.push(`🎲 <b>NÚMERO:</b> ${entry.numero}`);
 

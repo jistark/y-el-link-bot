@@ -12,7 +12,12 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
 
-const REGISTRY_PATH = join(process.cwd(), 'data', 'registry.json');
+// Lazy: resolved on each call so tests can chdir into a sandboxed tmpdir
+// before the first read/write. Baking the path in at init freezes it to
+// whatever cwd happened to be when test discovery loaded the module.
+function registryPath(): string {
+  return join(process.cwd(), 'data', 'registry.json');
+}
 const MAX_ENTRIES = 100;
 
 export interface RegistryEntry {
@@ -45,8 +50,12 @@ async function loadEntries(): Promise<RegistryEntry[]> {
   if (entriesCache) return entriesCache;
 
   try {
-    const raw = await readFile(REGISTRY_PATH, 'utf-8');
-    entriesCache = JSON.parse(raw);
+    const raw = await readFile(registryPath(), 'utf-8');
+    const parsed = JSON.parse(raw);
+    // Guard against shape mismatch (e.g. partial write left valid JSON
+    // that is not an array). Without this, every subsequent push/splice
+    // would throw TypeError.
+    entriesCache = Array.isArray(parsed) ? parsed : [];
   } catch {
     // File doesn't exist yet or is corrupted — start fresh
     entriesCache = [];
@@ -61,7 +70,7 @@ async function saveEntries(): Promise<void> {
   try {
     try { mkdirSync(join(process.cwd(), 'data'), { recursive: true }); } catch { /* ok */ }
     const json = JSON.stringify(entriesCache.slice(-MAX_ENTRIES));
-    await writeFile(REGISTRY_PATH, json, 'utf-8');
+    await writeFile(registryPath(), json, 'utf-8');
   } catch (err: any) {
     console.error(JSON.stringify({
       event: 'registry_save_error',
@@ -77,8 +86,12 @@ function scheduleSave(): void {
   savePromise = new Promise<void>((resolve) => {
     setTimeout(async () => {
       await saveEntries();
-      savePromise = null;
+      // Resolve before clearing the slot so awaiters see the completed save.
+      // If we cleared first, a second scheduleSave() arriving in the resolve
+      // microtask window would create a fresh debounce timer and observe
+      // stale state.
       resolve();
+      savePromise = null;
     }, 2_000); // 2s debounce
   });
 }
@@ -116,6 +129,25 @@ export async function findByGuidPrefix(prefix: string): Promise<RegistryEntry | 
   const entries = await loadEntries();
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i].guid?.startsWith(prefix)) return entries[i];
+  }
+}
+
+/**
+ * Look up an entry by the 16-char SHA-256 hash of its GUID. Optionally filter
+ * by source to limit the search space (e.g. only re-hash adprensa entries).
+ * Used by the RSS regen callback handler — see hashGuid in rss-shared.ts.
+ */
+export async function findByGuidHash(
+  hash: string,
+  source?: string,
+): Promise<RegistryEntry | undefined> {
+  const { hashGuid } = await import('./rss-shared.js');
+  const entries = await loadEntries();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (!e.guid) continue;
+    if (source && e.source !== source) continue;
+    if (hashGuid(e.guid) === hash) return e;
   }
 }
 

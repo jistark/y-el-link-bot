@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { sanitizeMercurioMarkup, parseArticleName, groupPageArticles } from '../src/extractors/elmercurio.js';
+import { sanitizeMercurioMarkup, parseArticleName, groupPageArticles, filterMercurioImages } from '../src/extractors/elmercurio.js';
 import { articleToNodes } from '../src/formatters/telegraph.js';
 import buchiAnchor from './fixtures/elmercurio_buchi_anchor.json';
 import b12Fixture from './fixtures/elmercurio_b12_2026-04-25.json';
@@ -344,5 +344,64 @@ describe('articleToNodes — story group cover priority', () => {
     const firstFigure = nodes.find((n: any) => typeof n === 'object' && n.tag === 'figure');
     const img = (firstFigure as any).children?.find((c: any) => c.tag === 'img');
     expect(img?.attrs?.src).toBe('https://example.com/page.jpg');
+  });
+});
+
+describe('filterMercurioImages', () => {
+  const big = { width: 1200, height: 800, path: 'foo.jpg' };
+
+  it('keeps a normal large image', () => {
+    expect(filterMercurioImages([big])).toHaveLength(1);
+  });
+
+  it('keeps images that omit noExport / infographic entirely (regression #13)', () => {
+    // Old code used `=== false` and dropped any record where the field
+    // was absent — which is most records in practice. Now absence means
+    // include.
+    const noFlags = { path: 'a.jpg', width: 500, height: 400 };
+    expect(filterMercurioImages([noFlags])).toHaveLength(1);
+  });
+
+  it('drops images explicitly marked noExport: true', () => {
+    expect(filterMercurioImages([{ ...big, noExport: true }])).toHaveLength(0);
+  });
+
+  it('drops images explicitly marked infographic: true', () => {
+    expect(filterMercurioImages([{ ...big, infographic: true }])).toHaveLength(0);
+  });
+
+  it('treats noExport: false as include (matches old behavior, no regression)', () => {
+    expect(filterMercurioImages([{ ...big, noExport: false }])).toHaveLength(1);
+  });
+
+  it('drops images smaller than 100px in either dimension', () => {
+    expect(filterMercurioImages([{ path: 'tiny.jpg', width: 50, height: 50 }])).toHaveLength(0);
+    expect(filterMercurioImages([{ path: 'thin.jpg', width: 500, height: 99 }])).toHaveLength(0);
+    expect(filterMercurioImages([{ path: 'short.jpg', width: 99, height: 500 }])).toHaveLength(0);
+  });
+
+  it('drops images with no path (defensive)', () => {
+    expect(filterMercurioImages([{ path: '', width: 500, height: 500 }])).toHaveLength(0);
+  });
+
+  it('keeps images with NO_WEB_ name prefix (NOT a filter criterion)', () => {
+    // The comment in the source explicitly says: do NOT filter by name
+    // prefix. Pin that invariant — main article photos use NO_WEB_ as
+    // a name convention.
+    expect(filterMercurioImages([{ ...big, name: 'NO_WEB_main_photo' }])).toHaveLength(1);
+  });
+
+  it('handles undefined and empty arrays', () => {
+    expect(filterMercurioImages(undefined)).toEqual([]);
+    expect(filterMercurioImages([])).toEqual([]);
+  });
+
+  it('preserves image order and field values', () => {
+    const arr = [
+      { path: 'a.jpg', width: 200, height: 200, caption: 'first' },
+      { path: 'b.jpg', width: 300, height: 300, credits: 'Foto: Juan' },
+    ];
+    const out = filterMercurioImages(arr);
+    expect(out).toEqual(arr);
   });
 });

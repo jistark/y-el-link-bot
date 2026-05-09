@@ -14,12 +14,14 @@ export interface FotoportadasRssItem extends BaseRssItem {
 
 // --- Parsing ---
 
+const MAX_ITEMS_PARSED = 50;
+
 export function parseFotoportadasItems(xml: string): FotoportadasRssItem[] {
   const items: FotoportadasRssItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
 
-  while ((match = itemRegex.exec(xml)) !== null) {
+  while ((match = itemRegex.exec(xml)) !== null && items.length < MAX_ITEMS_PARSED) {
     const block = match[1];
 
     const titleMatch = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
@@ -183,6 +185,7 @@ export async function fetchLatestFotoportadas(api: Api, chatId: number, threadId
 
   const caption = `\u{1F4F0} <b>${item.title}</b>`;
   const threadOpts = threadId ? { message_thread_id: threadId } : {};
+  const keyboard = createRssRegenKeyboard('fotoportadas', item.guid);
   let messageId: number | undefined;
 
   if (photos.length >= 2) {
@@ -194,9 +197,27 @@ export async function fetchLatestFotoportadas(api: Api, chatId: number, threadId
     );
     const sent = await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
     messageId = sent[0]?.message_id;
+    // Media groups can't carry inline keyboards — send a follow-up
+    // regen button so admins can refresh from /ultimo just like the
+    // auto-poll path. Best-effort; failure here doesn't undo the album.
+    try {
+      await api.sendMessage(chatId, '\u{1F504}', {
+        disable_notification: true,
+        reply_markup: keyboard,
+        ...threadOpts,
+      });
+    } catch (err) {
+      console.error(JSON.stringify({
+        event: 'fotoportadas_regen_button_failed',
+        guid: item.guid,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    }
   } else {
     const sent = await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
-      caption, parse_mode: 'HTML', disable_notification: true, ...threadOpts,
+      caption, parse_mode: 'HTML', disable_notification: true,
+      reply_markup: keyboard, ...threadOpts,
     });
     messageId = sent.message_id;
   }
@@ -206,7 +227,7 @@ export async function fetchLatestFotoportadas(api: Api, chatId: number, threadId
   await poller.savePostedGuids(posted);
 
   addRegistryEntry({
-    type: 'rss-adprensa',
+    type: 'rss-fotoportadas',
     originalUrl: item.link,
     guid: item.guid,
     source: 'fotoportadas',

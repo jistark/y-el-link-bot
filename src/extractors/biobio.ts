@@ -1,4 +1,5 @@
 import type { Article } from '../types.js';
+import { findArticleNode } from './helpers/json-ld.js';
 
 /**
  * Remove all div blocks with a specific class by tracking div nesting depth.
@@ -120,14 +121,12 @@ export async function extract(url: string): Promise<Article> {
     try {
       const data = JSON.parse(match[1]);
 
-      // Find the NewsArticle — could be root object, in @graph, or in an array
-      let article: any = null;
-      const graph: any[] = data['@graph'] || [];
-      if (graph.length > 0) {
-        article = graph.find((item: any) => item['@type'] === 'NewsArticle' || item['@type'] === 'Article');
-      } else if (data['@type'] === 'NewsArticle' || data['@type'] === 'Article') {
-        article = data;
-      }
+      // findArticleNode walks single objects, arrays, @graph envelopes,
+      // and handles @type as either string or array.
+      const article: any = findArticleNode(data);
+      // Keep the @graph array for @id reference resolution below
+      // (biobio publishers reference Person/ImageObject nodes by @id).
+      const graph: any[] = Array.isArray(data['@graph']) ? data['@graph'] : [];
 
       if (article && !title) {
         title = article.headline;

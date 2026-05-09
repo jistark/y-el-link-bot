@@ -72,6 +72,13 @@ const HTML_ENTITIES: Record<string, string> = {
   '&ccedil;': 'ç', '&Ccedil;': 'Ç',
 };
 
+// Escape the three HTML metacharacters that can break Telegraph nodes or
+// Telegram parse_mode='HTML'. Use this before interpolating untrusted text
+// (titles, captions, user-supplied names) into markup strings.
+export function escapeHtmlMinimal(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export function decodeEntities(text: string): string {
   // Extractors occasionally pass non-string values (e.g. Bloomberg's
   // story.headline can arrive as an object) — coerce instead of crashing.
@@ -94,6 +101,23 @@ export function decodeEntities(text: string): string {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
+}
+
+/**
+ * Race a promise against a timeout, clearing the underlying timer when the
+ * inner promise settles first. Replaces the manual `Promise.race([p, new
+ * Promise((_, rej) => setTimeout(rej, ms))])` pattern, which leaks the
+ * timer and produces an orphaned rejection that can crash Bun under its
+ * default unhandled-rejection policy.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'Timeout'): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function getRetryAfter(err: any): number | null {

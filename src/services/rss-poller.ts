@@ -81,12 +81,16 @@ async function getWetransferFileUrl(transferId: string, securityHash: string, pa
 
 // --- RSS Parsing ---
 
+// Cap parsing at this many items to bound memory on adversarial / unusually
+// large feeds. Real feeds rarely exceed 20-30 items; 50 leaves a margin.
+const MAX_ITEMS_PARSED = 50;
+
 export function parseSenalItems(xml: string): SenalRssItem[] {
   const items: SenalRssItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
 
-  while ((match = itemRegex.exec(xml)) !== null) {
+  while ((match = itemRegex.exec(xml)) !== null && items.length < MAX_ITEMS_PARSED) {
     const block = match[1];
 
     const titleMatch = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
@@ -366,6 +370,58 @@ const poller = createPoller<SenalRssItem>({
   },
 });
 
+/**
+ * Posts a Telegram album (sendMediaGroup) with a follow-up regen button.
+ *
+ * Critical invariant: `markPosted` MUST run AFTER sendMediaGroup succeeds
+ * AND BEFORE the follow-up sendMessage. If the follow-up throws (rate
+ * limit, network blip), the item is still considered posted — the album
+ * is already in the channel and re-posting on the next cycle would create
+ * a duplicate album.
+ *
+ * Exposed for unit tests; pass any object that satisfies the two methods
+ * we use here as `api`.
+ */
+export interface MinimalAlbumApi {
+  sendMediaGroup: (chatId: number, media: any[], opts?: any) => Promise<Array<{ message_id?: number }>>;
+  sendMessage: (chatId: number, text: string, opts?: any) => Promise<unknown>;
+}
+
+export async function postAlbumWithRegenButton(args: {
+  api: MinimalAlbumApi;
+  chatId: number;
+  mediaGroup: any[];
+  keyboard: unknown;
+  threadOpts: Record<string, unknown>;
+  guid: string;
+  markPosted: () => Promise<void>;
+}): Promise<number | undefined> {
+  const { api, chatId, mediaGroup, keyboard, threadOpts, guid, markPosted } = args;
+
+  const sent = await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
+  const messageId = sent[0]?.message_id;
+
+  // Mark posted BEFORE the follow-up — see contract above.
+  await markPosted();
+
+  try {
+    await api.sendMessage(chatId, '\u{1F504}', {
+      disable_notification: true,
+      reply_markup: keyboard,
+      ...threadOpts,
+    });
+  } catch (err) {
+    console.error(JSON.stringify({
+      event: 'senal_regen_button_failed',
+      guid,
+      error: err instanceof Error ? err.message : String(err),
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
+  return messageId;
+}
+
 // --- Public API (unchanged signatures) ---
 
 // Fetch and send the latest Senal item (for manual /ultimo command)
@@ -395,32 +451,37 @@ export async function fetchLatestSenal(api: Api, chatId: number, threadId?: numb
         parse_mode: 'HTML' as const,
       } : {}),
     );
-    const sent = await api.sendMediaGroup(chatId, mediaGroup, { disable_notification: true, ...threadOpts });
-    messageId = sent[0]?.message_id;
-    // Media groups can't have inline keyboards, send a follow-up regen button
-    // No reply_to — in channels, replies show a full album preview (visual dupe)
-    await api.sendMessage(chatId, '\u{1F504}', {
-      disable_notification: true,
-      reply_markup: keyboard,
-      ...threadOpts,
+    messageId = await postAlbumWithRegenButton({
+      api,
+      chatId,
+      mediaGroup,
+      keyboard,
+      threadOpts,
+      guid: item.guid,
+      markPosted: async () => {
+        const posted = await poller.getPostedGuids();
+        posted.add(item.guid);
+        await poller.savePostedGuids(posted);
+      },
     });
   } else if (photos.length === 1) {
     const sent = await api.sendPhoto(chatId, new InputFile(photos[0].buf, photos[0].name), {
       caption, parse_mode: 'HTML', disable_notification: true, reply_markup: keyboard, ...threadOpts,
     });
     messageId = sent.message_id;
+    const posted = await poller.getPostedGuids();
+    posted.add(item.guid);
+    await poller.savePostedGuids(posted);
   } else {
     const sent = await api.sendMessage(chatId, caption, {
       parse_mode: 'HTML', disable_notification: true, reply_markup: keyboard,
       link_preview_options: { is_disabled: true }, ...threadOpts,
     });
     messageId = sent.message_id;
+    const posted = await poller.getPostedGuids();
+    posted.add(item.guid);
+    await poller.savePostedGuids(posted);
   }
-
-  // Mark as posted in shared set so the poller doesn't duplicate it
-  const posted = await poller.getPostedGuids();
-  posted.add(item.guid);
-  await poller.savePostedGuids(posted);
 
   // Persist to registry
   addRegistryEntry({

@@ -19,7 +19,7 @@ export function extractArticleId(url: string): string | null {
   return match ? match[1] : null;
 }
 
-function processMacros(text: string): string {
+export function processMacros(text: string): string {
   let processed = text;
 
   // {IMAGEN url} → <img>
@@ -35,14 +35,15 @@ function processMacros(text: string): string {
   );
 
   // {VIDEO url} → ignorar (Telegraph no soporta video embebido)
-  processed = processed.replace(/\{VIDEO\s+[^}]+\}/gi, '');
+  // Use [\s\S]*? so newlines inside macros don't make us miss the closing brace.
+  processed = processed.replace(/\{VIDEO[\s\S]*?\}/gi, '');
 
-  // {CITA...}, {DESTACAR...} → eliminar
-  processed = processed.replace(/\{CITA[^}]*\}/gi, '');
-  processed = processed.replace(/\{DESTACAR[^}]*\}/gi, '');
+  // {CITA...}, {DESTACAR...} → eliminar (multilínea OK)
+  processed = processed.replace(/\{CITA[\s\S]*?\}/gi, '');
+  processed = processed.replace(/\{DESTACAR[\s\S]*?\}/gi, '');
 
   // Limpiar otras macros desconocidas
-  processed = processed.replace(/\{[A-Z]+[^}]*\}/g, '');
+  processed = processed.replace(/\{[A-Z]+[\s\S]*?\}/g, '');
 
   return processed;
 }
@@ -59,7 +60,15 @@ export async function extract(url: string): Promise<Article> {
   }
 
   const data: LaSegundaResponse = await response.json();
+  // The API can return error-shaped JSON (e.g. {error: 404}) without a
+  // `_source` field. Without this guard, the next field access crashes.
+  if (!data?._source) {
+    throw new Error('Respuesta inesperada de la API de La Segunda');
+  }
   const source = data._source;
+  if (!source.titulo) {
+    throw new Error('Artículo sin título');
+  }
 
   // External API: source.texto is typed string but can arrive null/undefined
   // (article without body) or as a non-string. Coerce to avoid crashing

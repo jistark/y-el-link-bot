@@ -1,4 +1,5 @@
 import type { Article } from '../types.js';
+import { decodeEntities, escapeHtmlMinimal } from '../utils/shared.js';
 
 interface LunParams {
   fecha: string;
@@ -21,7 +22,7 @@ export interface LunPageData {
 
 const LUN_TIMEOUT_MS = 15_000;
 
-function parseLunUrl(url: string): LunParams {
+export function parseLunUrl(url: string): LunParams {
   const params: Record<string, string> = {};
   const matches = url.matchAll(/[?&](\w+)=([^&]+)/gi);
   for (const match of matches) {
@@ -54,28 +55,9 @@ function buildHomemobUrl(params: LunParams): string {
   return `https://www.lun.com/lunmobileiphone/Homemob.aspx?dt=${params.fecha}&bodyid=${params.bodyId}&SupplementId=${params.supplementId}&PaginaId=${params.paginaId}&NewsId=${params.newsId}`;
 }
 
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&iquest;/g, '¿')
-    .replace(/&aacute;/g, 'á')
-    .replace(/&eacute;/g, 'é')
-    .replace(/&iacute;/g, 'í')
-    .replace(/&oacute;/g, 'ó')
-    .replace(/&uacute;/g, 'ú')
-    .replace(/&ntilde;/g, 'ñ')
-    .replace(/&Aacute;/g, 'Á')
-    .replace(/&Eacute;/g, 'É')
-    .replace(/&Iacute;/g, 'Í')
-    .replace(/&Oacute;/g, 'Ó')
-    .replace(/&Uacute;/g, 'Ú')
-    .replace(/&Ntilde;/g, 'Ñ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
-}
+// Use the shared decoder — it covers the same entities, plus hex (&#x...;)
+// which the local version was missing.
+const decodeHtmlEntities = decodeEntities;
 
 interface ExtractedContent {
   titulo: string | null;
@@ -208,7 +190,15 @@ export async function fetchLunPageArticles(url: string): Promise<LunPageData | n
   return { articles, fecha: params.fecha, paginaId: params.paginaId };
 }
 
-async function extractLunCore(params: LunParams, originalUrl: string): Promise<Article> {
+async function extractLunCore(
+  params: LunParams,
+  originalUrl: string,
+  options: { embedPageCover?: boolean } = {},
+): Promise<Article> {
+  // embedPageCover defaults to true for single-article extraction.
+  // Group extraction passes false to avoid appending one footer per article
+  // (all articles on the same page share the same printed-page image).
+  const embedPageCover = options.embedPageCover ?? true;
   // Construir URL de Homemob.aspx y obtener contenido
   const homemobUrl = buildHomemobUrl(params);
   const response = await fetch(homemobUrl, { signal: AbortSignal.timeout(LUN_TIMEOUT_MS) });
@@ -255,20 +245,34 @@ async function extractLunCore(params: LunParams, originalUrl: string): Promise<A
     url: imgUrl,
   }));
 
-  // Cover image priority:
-  // - If body has images, use first body image as implicit cover (og:image
-  //   becomes the first <img> in the document). Append printed-page edition
-  //   as a footer figure.
-  // - If no body images, fall back to printed-page image as the cover.
+  // Cover image policy:
+  // - If the article has its own per-article photos (the inline images
+  //   from /LunServerContents/Noticias...), the FIRST one becomes the
+  //   explicit cover image. Remaining images stay in `images` and
+  //   render as figures before the body. The printed-page image is
+  //   appended at the end of the body as context.
+  // - If the article has no per-article photos, fall back to the
+  //   printed-page image as the cover.
+  //
+  // Why explicit coverImage instead of relying on og:image extraction:
+  // (1) on multi-article pages, each article's lead photo travels with
+  //     it — combineLunPageArticles can inline non-first articles' lead
+  //     photos at the start of their body section; (2) makes the policy
+  //     readable rather than implicit.
   const pageCoverUrl = buildLunPageCoverUrl(params.fecha, params.paginaId);
   let coverImage: Article['coverImage'];
+  let outImages: Article['images'];
+
   if (images.length > 0) {
-    coverImage = undefined;
-    if (pageCoverUrl) {
+    coverImage = { url: images[0].url, caption: images[0].caption };
+    // The remaining images render as figures between author and body.
+    outImages = images.length > 1 ? images.slice(1) : undefined;
+    if (pageCoverUrl && embedPageCover) {
       body += `<figure><img src="${pageCoverUrl}"><figcaption>Edición impresa</figcaption></figure>\n`;
     }
   } else {
     coverImage = pageCoverUrl ? { url: pageCoverUrl } : undefined;
+    outImages = undefined;
   }
 
   return {
@@ -277,7 +281,7 @@ async function extractLunCore(params: LunParams, originalUrl: string): Promise<A
     author: content.autor || undefined,
     date: content.fecha || params.fecha || undefined,
     body,
-    images: images.length > 0 ? images : undefined,
+    images: outImages,
     coverImage,
     url: originalUrl,
     source: 'lun',
@@ -289,10 +293,12 @@ export async function extractLunByNewsId(
   fecha: string,
   paginaId: string,
   originalUrl: string,
+  options: { embedPageCover?: boolean } = {},
 ): Promise<Article> {
   return extractLunCore(
     { fecha, newsId, paginaId, supplementId: '0', bodyId: '0' },
     originalUrl,
+    options,
   );
 }
 
@@ -302,8 +308,12 @@ export async function extractLunPageGroup(
   paginaId: string,
   originalUrl: string,
 ): Promise<Article> {
+  // Suppress per-article printed-page footer; we add a single one at the end
+  // so the cover image isn't repeated N times in the combined body.
   const results = await Promise.allSettled(
-    pageArticles.map(a => extractLunByNewsId(a.newsId, fecha, paginaId, originalUrl)),
+    pageArticles.map(a =>
+      extractLunByNewsId(a.newsId, fecha, paginaId, originalUrl, { embedPageCover: false }),
+    ),
   );
   const fulfilled = results
     .map((r, i) => ({ r, info: pageArticles[i] }))
@@ -325,16 +335,83 @@ export async function extractLunPageGroup(
     }
   }
 
-  const first = fulfilled[0].r.value;
-  let combinedBody = first.body;
-  let combinedImages = first.images || [];
+  return combineLunPageArticles(
+    fulfilled.map(f => f.r.value),
+    buildLunPageCoverUrl(fecha, paginaId),
+    originalUrl,
+  );
+}
 
-  for (let i = 1; i < fulfilled.length; i++) {
-    const r = fulfilled[i].r.value;
-    const titleHtml = `<h3>${r.title}</h3>`;
-    combinedBody += `\n<hr>\n${titleHtml}${r.body}`;
+/**
+ * Combine N LUN articles (extracted with embedPageCover: false) into a
+ * single Article. Pure function — exposed for unit tests.
+ *
+ * Invariants:
+ *  - Throws if `articles` is empty.
+ *  - The first article's metadata (title, subtitle, author, date, coverImage)
+ *    becomes the combined article's metadata.
+ *  - Subsequent article bodies are joined with <hr> + <h3>{escaped title}.
+ *  - The printed-page footer is appended exactly ONCE at the end (regression
+ *    for commit 91f656c, where each per-article extraction appended its own
+ *    footer and N copies leaked into the combined body).
+ */
+export function combineLunPageArticles(
+  articles: Article[],
+  pageCoverUrl: string | null,
+  originalUrl: string,
+): Article {
+  if (articles.length === 0) {
+    throw new Error('combineLunPageArticles: no articles to combine');
+  }
+
+  const first = articles[0];
+  let combinedBody = first.body;
+  let combinedImages = first.images ? [...first.images] : [];
+
+  // first.coverImage is the page-level cover (above the fold). For
+  // articles 2..N, their per-article coverImage was meant to be THEIR
+  // lead photo; in a combined page we can't render it as a page cover,
+  // so we inline it at the start of that article's body section as a
+  // figure. This preserves the per-article visual context that the LUN
+  // mobile app shows next to each note.
+  for (let i = 1; i < articles.length; i++) {
+    const r = articles[i];
+    const titleHtml = `<h3>${escapeHtmlMinimal(r.title)}</h3>`;
+    const isPerArticleCover = !!r.coverImage?.url
+      && r.coverImage.url !== pageCoverUrl; // not the printed-page fallback
+    const inlineCover = isPerArticleCover
+      ? `<figure><img src="${r.coverImage!.url}"></figure>\n`
+      : '';
+    combinedBody += `\n<hr>\n${titleHtml}\n${inlineCover}${r.body}`;
     if (r.images) combinedImages = combinedImages.concat(r.images);
   }
+
+  // Determine whether ANY article has its own per-article images. This
+  // governs whether the printed-page footer goes into the body, and
+  // whether we keep first.coverImage as the page-level cover or suppress
+  // it (to avoid double-cover when first.coverImage is itself the
+  // printed page — which happens when the first article has no images
+  // but later articles do).
+  const firstHasOwnCover = !!first.coverImage?.url
+    && first.coverImage.url !== pageCoverUrl;
+  const anyHasPerArticleImages = combinedImages.length > 0
+    || firstHasOwnCover
+    || articles.slice(1).some(a => a.coverImage?.url && a.coverImage.url !== pageCoverUrl);
+
+  if (pageCoverUrl && anyHasPerArticleImages) {
+    combinedBody += `\n<figure><img src="${pageCoverUrl}"><figcaption>Edición impresa</figcaption></figure>`;
+  }
+
+  // Cover policy for the combined page:
+  // - first.coverImage is per-article → keep as page cover.
+  // - first.coverImage is pageCoverUrl AND others have per-article
+  //   images → suppress to avoid the printed page rendering BOTH as
+  //   the cover AND as a footer in the body.
+  // - first.coverImage is pageCoverUrl AND no one has per-article
+  //   images → keep as page cover (no double-cover risk).
+  const inheritedCover = firstHasOwnCover
+    ? first.coverImage
+    : (anyHasPerArticleImages ? undefined : first.coverImage);
 
   return {
     title: first.title,
@@ -343,7 +420,7 @@ export async function extractLunPageGroup(
     date: first.date,
     body: combinedBody,
     images: combinedImages.length > 0 ? combinedImages : undefined,
-    coverImage: first.coverImage,
+    coverImage: inheritedCover,
     url: originalUrl,
     source: 'lun',
   };
