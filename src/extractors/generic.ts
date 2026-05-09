@@ -43,7 +43,7 @@ async function fetchWithRecipe(url: string): Promise<string> {
   }
 
   const allHeaders = { ...recipe.headers };
-  if (recipe.stripCookies) allHeaders['Cookie'] = '';
+  if (recipe.stripCookies) delete allHeaders['Cookie'];
 
   // Try native fetch first (lightweight, no Python)
   try {
@@ -69,10 +69,19 @@ async function fetchWithRecipe(url: string): Promise<string> {
     // Network error -- fall through to curl_cffi
   }
 
-  // Cloudflare fallback: use Python curl_cffi with TLS impersonation
+  // Cloudflare fallback: use Python curl_cffi with TLS impersonation.
+  // Pass the full recipe headers so per-domain bypass strategies (haaretz
+  // mobile UA, headers_custom, X-Forwarded-For) survive proxy escalation.
   const isGooglebot = allHeaders['User-Agent']?.includes('Googlebot');
-  const mode = isGooglebot ? 'googlebot' as const : 'chrome' as const;
-  return fetchBypass(url, allHeaders['Referer'], mode);
+  const isInspectionTool = allHeaders['User-Agent']?.includes('Google-InspectionTool');
+  const mode = isInspectionTool ? 'inspectiontool' as const
+    : isGooglebot ? 'googlebot' as const
+    : 'chrome' as const;
+  return fetchBypass(url, {
+    referer: allHeaders['Referer'],
+    headers: allHeaders,
+    mode,
+  });
 }
 
 const ARTICLE_TYPES = new Set([
@@ -116,7 +125,11 @@ function collectArticleCandidates(data: unknown): JsonLdArticle[] {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) { for (const n of node) visit(n); return; }
     const obj = node as Record<string, unknown>;
-    if (typeof obj['@type'] === 'string' && ARTICLE_TYPES.has(obj['@type'])) {
+    // schema.org allows @type to be a single string OR an array of strings
+    // (e.g. ["NewsArticle", "Article"]). Handle both shapes.
+    const t = obj['@type'];
+    const types = typeof t === 'string' ? [t] : Array.isArray(t) ? t : [];
+    if (types.some(x => typeof x === 'string' && ARTICLE_TYPES.has(x))) {
       out.push(obj as JsonLdArticle);
     }
     if (Array.isArray(obj['@graph'])) visit(obj['@graph']);
@@ -225,15 +238,21 @@ function extractHtmlFallback(html: string): Partial<Article> | null {
     /<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i,
   );
 
-  // Body: find <article> or main content
+  // Body: try a series of progressively-broader containers. Falling back to
+  // the full page is a last resort because it pulls nav/footer/cookie-banner
+  // <p> tags into the body and slows the regex scan over hundreds of KB.
   let bodyHtml = '';
-  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-  if (articleMatch) {
-    bodyHtml = articleMatch[1];
-  } else {
-    // Fallback: use the full page
-    bodyHtml = html;
+  const containerPatterns: RegExp[] = [
+    /<article[^>]*>([\s\S]*?)<\/article>/i,
+    /<main[^>]*>([\s\S]*?)<\/main>/i,
+    /<[^>]+role=["']main["'][^>]*>([\s\S]*?)<\/[^>]+>/i,
+    /<div[^>]+id=["']content["'][^>]*>([\s\S]*?)<\/div>/i,
+  ];
+  for (const re of containerPatterns) {
+    const m = html.match(re);
+    if (m) { bodyHtml = m[1]; break; }
   }
+  if (!bodyHtml) bodyHtml = html; // último recurso
 
   // Extract paragraphs
   const paragraphs: string[] = [];

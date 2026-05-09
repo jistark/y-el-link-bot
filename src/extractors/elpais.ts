@@ -1,8 +1,31 @@
 import type { Article } from '../types.js';
+import { fetchBypass } from './fetch-bypass.js';
 
 const ELPAIS_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
 };
+
+// Same statuses as generic.ts: bot-protection blocks worth escalating to
+// IPRoyal Web Unblocker. elpais.com is in DEFAULT_PROXY_DOMAINS as of 2026-05-09.
+const PROXY_FALLBACK_STATUSES = new Set([401, 402, 403, 429, 451, 503]);
+
+async function fetchHtml(url: string): Promise<string> {
+  try {
+    const response = await fetch(url, { headers: ELPAIS_HEADERS, signal: AbortSignal.timeout(15_000) });
+    if (response.ok) return await response.text();
+    if (!PROXY_FALLBACK_STATUSES.has(response.status) && !(response.status >= 520 && response.status <= 530)) {
+      throw new Error(`Error al obtener artículo: ${response.status}`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Error al obtener artículo:')) throw err;
+    // Network error / timeout — fall through to proxy.
+  }
+  return fetchBypass(url, {
+    referer: 'https://www.google.com/',
+    headers: ELPAIS_HEADERS,
+    mode: 'googlebot',
+  });
+}
 
 interface JsonLdArticle {
   '@type'?: string | string[];
@@ -170,11 +193,7 @@ function extractParagraphsFromHtml(html: string): string[] {
 }
 
 export async function extract(url: string): Promise<Article> {
-  const response = await fetch(url, { headers: ELPAIS_HEADERS, signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) {
-    throw new Error(`Error al obtener artículo: ${response.status}`);
-  }
-  const html = await response.text();
+  const html = await fetchHtml(url);
 
   // Buscar JSON-LD con articleBody
   const scriptRegex = /<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;

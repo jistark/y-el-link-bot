@@ -40,6 +40,13 @@ _IPROYAL_PARAM_RE = re.compile(r'_(?:render-\d+|country-[a-z]{2}|city-[\w-]+|sta
 DEFAULT_PROXY_DOMAINS = [
     'ft.com', 'bloomberg.com', 'nytimes.com', 'theatlantic.com',
     'wired.com', 'dolar.cl', 'reuters.com',
+    # Added 2026-05-09 based on prod failure logs (May 1-9):
+    'elpais.com',           # 403 from datacenter on Googlebot UA
+    'haaretz.com',          # paywall expects mobile-app headers from non-DC IPs
+    # NOTE: washingtonpost.com / wsj.com / marketwatch.com originally added
+    # here but verified to work via direct (datacenter + recipe headers).
+    # Routing them through residential proxy actually hurts: the residential
+    # exit IP triggers tighter scrutiny than Googlebot UA from datacenter.
 ]
 PROXY_DOMAINS = (
     [d.strip() for d in os.environ['PROXY_DOMAINS'].split(',') if d.strip()]
@@ -211,6 +218,18 @@ INSPECTIONTOOL_HEADERS = {
 }
 
 
+def _load_extra_headers():
+    """Recipe headers passed from TS via env. JSON object; empty if absent."""
+    raw = os.environ.get('EXTRA_HEADERS')
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: fetch_bypass.py <url> [referer] [mode]", file=sys.stderr)
@@ -219,23 +238,26 @@ def main():
     url = sys.argv[1]
     referer = sys.argv[2] if len(sys.argv) > 2 else None
     mode = sys.argv[3] if len(sys.argv) > 3 else 'chrome'
+    extra_headers = _load_extra_headers()
 
-    if mode == 'googlebot':
-        headers = dict(GOOGLEBOT_HEADERS)
+    if mode == 'googlebot' or mode == 'inspectiontool':
+        headers = dict(GOOGLEBOT_HEADERS if mode == 'googlebot' else INSPECTIONTOOL_HEADERS)
         if referer:
             headers['Referer'] = referer
-        content, status = fetch_direct(url, headers)
-        if content is not None:
-            sys.stdout.buffer.write(content)
-            return
-        print(f"HTTP {status}", file=sys.stderr)
-        sys.exit(1)
-
-    if mode == 'inspectiontool':
-        headers = dict(INSPECTIONTOOL_HEADERS)
-        if referer:
-            headers['Referer'] = referer
-        content, status = fetch_direct(url, headers)
+        # Recipe headers (e.g., headers_custom from haaretz) override mode defaults.
+        headers.update(extra_headers)
+        # Bot UAs can also be IP-blocked at datacenter; route through proxy if
+        # the domain is in PROXY_DOMAINS (e.g., elpais.com returns 403 to
+        # Googlebot from datacenter IPs but accepts via residential proxy).
+        use_proxy = bool(PROXY_URL) and needs_proxy(url)
+        country = get_country(url) if use_proxy else None
+        if use_proxy:
+            content, status = fetch_direct(url, headers, use_proxy=True, country=country)
+            if content is not None:
+                sys.stdout.buffer.write(content)
+                return
+            # Proxy failed (timeout, 403, etc.) — fall through to direct.
+        content, status = fetch_direct(url, headers, use_proxy=False)
         if content is not None:
             sys.stdout.buffer.write(content)
             return
@@ -256,6 +278,10 @@ def main():
         if referer:
             headers['Referer'] = referer
             headers['Sec-Fetch-Site'] = 'cross-site'
+
+    # Recipe headers always take precedence — they're the site-specific
+    # bypass strategy from upstream rules (mobile UA, custom auth, etc.).
+    headers.update(extra_headers)
 
     if use_proxy:
         # Web Unblocker first — direct fetch from Render IP would fail anyway.

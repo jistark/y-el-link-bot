@@ -5,6 +5,12 @@ const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google
 const BINGBOT_UA = 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)';
 const FACEBOOKBOT_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
 
+// Fallback UA for cookie-strip-only recipes. The bypass-paywalls Chrome
+// extension sends the user's real browser UA; we have to synthesize one.
+// WSJ's Drudge-referer trick, for example, only honors Chrome-UA + Drudge-referer
+// pairs — a missing UA makes Cloudflare drop the request as bot traffic.
+const DEFAULT_CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 interface BypassRule {
   useragent?: string;
   useragent_custom?: string;
@@ -13,6 +19,12 @@ interface BypassRule {
   headers_custom?: Record<string, string>;
   allow_cookies?: boolean;
   random_ip?: string;
+  /**
+   * Hostnames the rule should NOT apply to (upstream `excluded_domains`).
+   * E.g., a Dow Jones group rule excludes `journaldemontreal.com` even though
+   * it shares ownership. Honored in findRule.
+   */
+  excluded_domains?: string[];
 }
 
 export interface RecipeHeaders {
@@ -43,17 +55,26 @@ const allRules: Record<string, BypassRule> = (() => {
   }
 })();
 
+function ruleApplies(rule: BypassRule | undefined, hostname: string): rule is BypassRule {
+  if (!rule) return false;
+  if (rule.excluded_domains && rule.excluded_domains.includes(hostname)) return false;
+  return true;
+}
+
 function findRule(hostname: string): BypassRule | null {
   // Exact match
-  if (allRules[hostname]) return allRules[hostname];
+  if (ruleApplies(allRules[hostname], hostname)) return allRules[hostname];
   // Strip www.
   const noWww = hostname.replace(/^www\./, '');
-  if (allRules[noWww]) return allRules[noWww];
-  // Try parent domain (e.g., sub.example.com -> example.com)
+  if (ruleApplies(allRules[noWww], hostname)) return allRules[noWww];
+  // Try every parent domain by peeling subdomains one level at a time.
+  // (e.g. news.regional.ft.com -> regional.ft.com -> ft.com).
+  // Stop at length 2 to avoid matching naked TLDs like "co.uk".
   const parts = noWww.split('.');
-  if (parts.length > 2) {
-    const parent = parts.slice(1).join('.');
-    if (allRules[parent]) return allRules[parent];
+  while (parts.length > 2) {
+    parts.shift();
+    const candidate = parts.join('.');
+    if (ruleApplies(allRules[candidate], hostname)) return allRules[candidate];
   }
   return null;
 }
@@ -75,6 +96,10 @@ function buildHeaders(rule: BypassRule): RecipeHeaders {
     headers['User-Agent'] = FACEBOOKBOT_UA;
   } else if (rule.useragent_custom) {
     headers['User-Agent'] = rule.useragent_custom;
+  } else {
+    // Cookie-strip-only recipe: send a real Chrome UA so referer-trick
+    // recipes (wsj.com → Drudge Report) and Cloudflare edge checks accept us.
+    headers['User-Agent'] = DEFAULT_CHROME_UA;
   }
 
   // Referer (if not already set by googlebot)

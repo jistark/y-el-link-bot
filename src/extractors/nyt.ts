@@ -41,7 +41,12 @@ export async function extract(url: string): Promise<Article> {
   // still gets server-rendered HTML with the article body under
   // <section name="articleBody">, which extractBodyFromHtml parses below.
   // JSON-LD headline/author metadata are present; articleBody there is empty.
-  const html = await fetchBypass(url, 'https://www.google.com/', 'chrome');
+  // Intentionally NOT using recipe.useragent_custom (Google-InspectionTool) —
+  // we override with chrome mode here. Recipe still useful for cookie strip.
+  const html = await fetchBypass(url, {
+    referer: 'https://www.google.com/',
+    mode: 'chrome',
+  });
 
   // Extract JSON-LD for metadata
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
