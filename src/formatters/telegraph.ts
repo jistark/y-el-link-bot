@@ -6,7 +6,32 @@ const UPLOAD_URL = 'https://telegra.ph/upload';
 
 // In-memory cache of original URL → telegra.ph URL to avoid re-uploading
 // when an image is referenced by multiple articles in a session.
-const uploadCache = new Map<string, string>();
+//
+// TTL'd because Telegraph periodically purges orphaned uploads — without
+// expiry we'd cache a stale telegra.ph URL forever and serve broken images
+// for the entire process lifetime.
+const UPLOAD_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+const UPLOAD_CACHE_MAX = 500;
+const uploadCache = new Map<string, { url: string; expires: number }>();
+
+function uploadCacheGet(key: string): string | undefined {
+  const entry = uploadCache.get(key);
+  if (!entry) return undefined;
+  if (entry.expires < Date.now()) {
+    uploadCache.delete(key);
+    return undefined;
+  }
+  return entry.url;
+}
+
+function uploadCacheSet(key: string, url: string): void {
+  // Bound size: when full, drop the oldest entry (Map preserves insertion order).
+  if (uploadCache.size >= UPLOAD_CACHE_MAX) {
+    const firstKey = uploadCache.keys().next().value;
+    if (firstKey !== undefined) uploadCache.delete(firstKey);
+  }
+  uploadCache.set(key, { url, expires: Date.now() + UPLOAD_CACHE_TTL_MS });
+}
 
 /**
  * Downloads an image from an external URL and uploads it to Telegraph's CDN,
@@ -17,7 +42,7 @@ async function mirrorToTelegraph(externalUrl: string): Promise<string> {
   if (!externalUrl || !externalUrl.startsWith('http')) return externalUrl;
   if (externalUrl.startsWith('https://telegra.ph/file/')) return externalUrl;
 
-  const cached = uploadCache.get(externalUrl);
+  const cached = uploadCacheGet(externalUrl);
   if (cached) return cached;
 
   try {
@@ -33,7 +58,7 @@ async function mirrorToTelegraph(externalUrl: string): Promise<string> {
     const uploadResp = await fetch(UPLOAD_URL, {
       method: 'POST',
       body: formData,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(8_000),
     });
     if (!uploadResp.ok) return externalUrl;
 
@@ -41,7 +66,7 @@ async function mirrorToTelegraph(externalUrl: string): Promise<string> {
     if (!Array.isArray(data) || !data[0]?.src) return externalUrl;
 
     const newUrl = `https://telegra.ph${data[0].src}`;
-    uploadCache.set(externalUrl, newUrl);
+    uploadCacheSet(externalUrl, newUrl);
     return newUrl;
   } catch (err) {
     console.error(JSON.stringify({
@@ -80,8 +105,10 @@ async function mirrorArticleImages(article: Article): Promise<Article> {
   // Mirror any <img> URLs embedded inside the body HTML (e.g., from recuadros
   // composed by extractStoryGroup). We replace them in-place via regex.
   if (updated.body) {
+    // Accept both " and ' for src attribute. Some scrapers (DF, La Tercera
+     // via Googlebot UA) emit single-quoted src and would otherwise be skipped.
     const urlsInBody = Array.from(
-      updated.body.matchAll(/<img\s+[^>]*src="(https?:\/\/[^"]+)"/gi),
+      updated.body.matchAll(/<img\s+[^>]*src=["'](https?:\/\/[^"']+)["']/gi),
       m => m[1]
     );
     const uniqueBodyUrls = [...new Set(urlsInBody)];
@@ -191,10 +218,22 @@ function parseChildren(innerHtml: string): TelegraphNode[] {
   return innerHtml.includes('<') ? parseInline(innerHtml) : [decodeEntities(innerHtml)];
 }
 
+// Normalize <strong>/<em> to <b>/<i> so the inline regex doesn't need
+// backreferences. Without this, mixed pairs like `<b>...</strong>` or
+// `<strong>...</b>` (common in scraped HTML) silently get stripped to
+// plain text instead of being rendered as bold.
+function normalizeBoldItalicTags(html: string): string {
+  return html
+    .replace(/<strong\b([^>]*)>/gi, '<b$1>')
+    .replace(/<\/strong>/gi, '</b>')
+    .replace(/<em\b([^>]*)>/gi, '<i$1>')
+    .replace(/<\/em>/gi, '</i>');
+}
+
 // Parsea contenido inline, preservando negritas, itálicas, links y marks
 function parseInline(html: string): TelegraphNode[] {
   const nodes: TelegraphNode[] = [];
-  let text = html;
+  let text = normalizeBoldItalicTags(html);
 
   // Procesar (con [^>]* para aceptar atributos como style, class):
   // - negritas <b>...</b> y <strong>...</strong>
@@ -202,7 +241,9 @@ function parseInline(html: string): TelegraphNode[] {
   // - subrayado <u>...</u> → pass-through (Telegraph no soporta <u>)
   // - destacados <mark>...</mark> → itálica
   // - links <a href="...">...</a>
-  const regex = /<(b|strong)[^>]*>(.+?)<\/\1>|<(i|em)[^>]*>(.+?)<\/\3>|<u[^>]*>(.+?)<\/u>|<mark[^>]*>(.+?)<\/mark>|<a\s+href="([^"]+)"[^>]*>(.+?)<\/a>/gi;
+  // After normalization above, <strong>/<em> are already rewritten to
+  // <b>/<i>, so we no longer need backreferences to match symmetric pairs.
+  const regex = /<b[^>]*>(.+?)<\/b>|<i[^>]*>(.+?)<\/i>|<u[^>]*>(.+?)<\/u>|<mark[^>]*>(.+?)<\/mark>|<a\s+href="([^"]+)"[^>]*>(.+?)<\/a>/gi;
   let lastIndex = 0;
   let match;
 
@@ -213,34 +254,22 @@ function parseInline(html: string): TelegraphNode[] {
       if (before) nodes.push(before);
     }
 
-    if (match[1]) {
-      // Es negrita <b> o <strong>
-      nodes.push({
-        tag: 'b',
-        children: parseChildren(match[2]),
-      });
-    } else if (match[3]) {
-      // Es itálica <i> o <em>
-      nodes.push({
-        tag: 'i',
-        children: parseChildren(match[4]),
-      });
-    } else if (match[5]) {
-      // Es <u> → pass-through sin tag (Telegraph no soporta underline)
-      nodes.push(...parseChildren(match[5]));
-    } else if (match[6]) {
-      // Es mark (destacado) → convertir a itálica
-      nodes.push({
-        tag: 'i',
-        children: parseChildren(match[6]),
-      });
-    } else if (match[7]) {
-      // Es link
-      nodes.push({
-        tag: 'a',
-        attrs: { href: match[7] },
-        children: parseChildren(match[8]),
-      });
+    // Capture groups (post-normalization, no backreferences):
+    //   1: <b>...</b> content   2: <i>...</i> content
+    //   3: <u>...</u> content   4: <mark>...</mark> content
+    //   5: <a href="">          6: <a>...</a> content
+    if (match[1] !== undefined) {
+      nodes.push({ tag: 'b', children: parseChildren(match[1]) });
+    } else if (match[2] !== undefined) {
+      nodes.push({ tag: 'i', children: parseChildren(match[2]) });
+    } else if (match[3] !== undefined) {
+      // <u> → pass-through (Telegraph no soporta underline)
+      nodes.push(...parseChildren(match[3]));
+    } else if (match[4] !== undefined) {
+      // <mark> → itálica
+      nodes.push({ tag: 'i', children: parseChildren(match[4]) });
+    } else if (match[5] !== undefined) {
+      nodes.push({ tag: 'a', attrs: { href: match[5] }, children: parseChildren(match[6]) });
     }
 
     lastIndex = match.index + match[0].length;
@@ -311,15 +340,19 @@ function createEmbedNode(url: string, provider?: string): TelegraphNode | null {
   return null;
 }
 
-// Tags HTML permitidos - todos los demás se eliminan preservando su texto
+// Tags HTML permitidos - todos los demás se eliminan preservando su texto.
+// Limitado al subset que Telegraph soporta como nodos (más algunos block
+// contenedores que normalizamos antes: div/span/section/article/p/h*).
+//
+// Eliminados respecto a la versión anterior: video/audio/source (Telegraph
+// no los soporta), y table/tr/td/th/thead/tbody/ol (no son nodos válidos —
+// si se dejaban pasar reaparecían como tags literales en el output).
 const ALLOWED_TAGS = new Set([
   'p', 'b', 'strong', 'i', 'em', 'a', 'mark', 'u', 's',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'img', 'figure', 'figcaption', 'iframe',
   'br', 'hr', 'div', 'span', 'section', 'article', 'aside',
-  'blockquote', 'ul', 'ol', 'li',
-  'table', 'tr', 'td', 'th', 'thead', 'tbody',
-  'video', 'source', 'audio',
+  'blockquote', 'ul', 'li',
 ]);
 
 function stripUnknownTags(html: string): string {
@@ -361,8 +394,8 @@ function htmlToNodes(html: string): TelegraphNode[] {
     return `\n<ASIDE>${placeholder}</ASIDE>\n`;
   });
 
-  // Paso 3: Extraer imágenes
-  normalized = normalized.replace(/<img\s+[^>]*src="([^"]+)"[^>]*>/gi, '\n<IMG>$1</IMG>\n');
+  // Paso 3: Extraer imágenes (acepta src con comillas dobles o simples).
+  normalized = normalized.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, '\n<IMG>$1</IMG>\n');
 
   // Paso 3b: Extraer iframes (YouTube, Vimeo)
   normalized = normalized.replace(/<iframe\s+[^>]*src="([^"]+)"[^>]*><\/iframe>/gi, '\n<IFRAME>$1</IFRAME>\n');
@@ -519,6 +552,28 @@ export interface CreatePageResult {
   path: string;
 }
 
+// Telegraph rejects content payloads larger than ~64KB of serialized JSON.
+// We trim to a slightly smaller budget and append a sentinel "(continúa…)"
+// node so the user knows truncation happened.
+const TELEGRAPH_MAX_CONTENT_BYTES = 60_000;
+
+export function truncateNodesToBudget(nodes: TelegraphNode[]): TelegraphNode[] {
+  if (JSON.stringify(nodes).length <= TELEGRAPH_MAX_CONTENT_BYTES) return nodes;
+  // Drop trailing nodes one at a time until we fit, then append a sentinel.
+  let trimmed = nodes.slice();
+  while (trimmed.length > 0 && JSON.stringify(trimmed).length > TELEGRAPH_MAX_CONTENT_BYTES - 200) {
+    trimmed.pop();
+  }
+  trimmed.push({ tag: 'p', children: [{ tag: 'i', children: ['(Contenido truncado por límite de Telegraph)'] }] });
+  console.warn(JSON.stringify({
+    event: 'telegraph_content_truncated',
+    originalNodes: nodes.length,
+    keptNodes: trimmed.length,
+    timestamp: new Date().toISOString(),
+  }));
+  return trimmed;
+}
+
 export async function createPage(article: Article): Promise<CreatePageResult> {
   const token = process.env.TELEGRAPH_ACCESS_TOKEN;
   if (!token) {
@@ -528,7 +583,7 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
   // Mirror external images to Telegraph CDN (fail-soft: keeps original URLs on failure)
   const mirrored = await mirrorArticleImages(article);
 
-  const content = articleToNodes(mirrored);
+  const content = truncateNodesToBudget(articleToNodes(mirrored));
   const slug = generateSlug(mirrored.source);
 
   // Paso 1: Crear página con slug como título (para obtener path corto)
@@ -543,6 +598,7 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
       content,
       return_content: false,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const createData: CreatePageResponse = await createResponse.json();
@@ -566,6 +622,7 @@ export async function createPage(article: Article): Promise<CreatePageResult> {
       content,
       return_content: false,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const editData: CreatePageResponse = await editResponse.json();

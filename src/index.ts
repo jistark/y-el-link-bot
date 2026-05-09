@@ -1,5 +1,4 @@
 import { createBot } from './bot.js';
-import { webhookCallback } from 'grammy';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const webhookSecret = process.env.WEBHOOK_SECRET || crypto.randomUUID();
@@ -26,7 +25,6 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 if (WEBHOOK_URL) {
   // Producción: webhook con Bun.serve
-  const handleUpdate = webhookCallback(bot, 'std/http');
   const PORT = parseInt(process.env.PORT || '10000');
 
   const server = Bun.serve({
@@ -44,7 +42,26 @@ if (WEBHOOK_URL) {
         if (req.headers.get('x-telegram-bot-api-secret-token') !== webhookSecret) {
           return new Response('Forbidden', { status: 403 });
         }
-        return handleUpdate(req);
+        // Fire-and-forget: ack a Telegram al toque y procesa la actualización en
+        // background. Si esperamos la extracción + subidas a Telegraph, grammy
+        // expira a los 10 s y Telegram reintenta (mensajes duplicados).
+        try {
+          const update = await req.json();
+          bot.handleUpdate(update).catch(err =>
+            console.error(JSON.stringify({
+              event: 'webhook_handler_failed',
+              error: err instanceof Error ? err.message : String(err),
+              timestamp: new Date().toISOString(),
+            }))
+          );
+        } catch (err) {
+          console.error(JSON.stringify({
+            event: 'webhook_parse_failed',
+            error: err instanceof Error ? err.message : String(err),
+            timestamp: new Date().toISOString(),
+          }));
+        }
+        return new Response('', { status: 200 });
       }
 
       return new Response('Not Found', { status: 404 });

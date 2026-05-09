@@ -1,4 +1,30 @@
 import type { Article } from '../types.js';
+import { type JsonLdArticle, extractAuthor, extractImage, findArticleNode } from './helpers/json-ld.js';
+
+// CNN Chile a veces emite saltos de línea crudos dentro de strings JSON-LD
+// (articleBody con un \n al final), lo que rompe JSON.parse. Escapamos
+// control chars solo cuando estamos dentro de un string.
+function sanitizeJsonControlChars(text: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === '\\') { out += ch; escaped = true; continue; }
+      if (ch === '"') { out += ch; inString = false; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { out += '\\r'; continue; }
+      if (ch === '\t') { out += '\\t'; continue; }
+      out += ch;
+    } else {
+      out += ch;
+      if (ch === '"') inString = true;
+    }
+  }
+  return out;
+}
 
 export async function extract(url: string): Promise<Article> {
   const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -9,89 +35,76 @@ export async function extract(url: string): Promise<Article> {
 
   const html = await response.text();
 
-  // JSON-LD tiene metadatos (título, autor, fecha, imagen)
-  const jsonLdMatch = html.match(/<script type="application\/ld\+json">\s*(\{[\s\S]*?\})\s*<\/script>/);
+  // El JSON-LD ahora viene en `@graph`. findArticleNode camina envoltorios.
+  // Permitir whitespace en `<script type="application/ld+json" >` (cnnchile lo emite así).
+  const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json"\s*>([\s\S]+?)<\/script>/g);
 
-  let title: string | undefined;
-  let subtitle: string | undefined;
-  let author: string | undefined;
-  let date: string | undefined;
-  let imageUrl: string | undefined;
-
-  if (jsonLdMatch) {
+  let article: (JsonLdArticle & { thumbnailUrl?: string }) | null = null;
+  for (const match of jsonLdMatches) {
     try {
-      const data = JSON.parse(jsonLdMatch[1]);
-      title = data.headline;
-      subtitle = data.description;
-      author = typeof data.author === 'string' ? data.author : data.author?.name;
-      date = data.datePublished;
-      imageUrl = data.image?.url;
+      const found = findArticleNode(JSON.parse(sanitizeJsonControlChars(match[1])));
+      if (found) { article = found as JsonLdArticle & { thumbnailUrl?: string }; break; }
     } catch {
-      // JSON inválido, continuar con parsing HTML
+      // JSON inválido, continuar
     }
   }
 
-  // Fallback para título desde meta tags
-  if (!title) {
-    const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/);
-    title = ogTitle?.[1];
-  }
+  // og:* fallbacks aceptan single y double quotes (cnnchile usa simples).
+  const ogTitle = html.match(/<meta\s+property=["']og:title["']\s+content=(?:"([^"]+)"|'([^']+)')/);
+  const ogDescription = html.match(/<meta\s+property=["']og:description["']\s+content=(?:"([^"]+)"|'([^']+)')/);
+  const ogImage = html.match(/<meta\s+property=["']og:image["']\s+content=(?:"([^"]+)"|'([^']+)')/);
 
+  const title = article?.headline ?? ogTitle?.[1] ?? ogTitle?.[2];
   if (!title) {
     throw new Error('No se pudo extraer el título del artículo');
   }
 
-  // Epígrafe (bajada)
-  const epigraphMatch = html.match(/<p class="epigraph">([^<]+)<\/p>/);
-  const bajada = epigraphMatch?.[1]?.trim();
+  const subtitle = article?.description ?? ogDescription?.[1] ?? ogDescription?.[2];
+  const author = extractAuthor(article?.author);
+  const date = article?.datePublished;
 
-  // Contenido principal: div después del <hr> que sigue al epígrafe
+  // image en cnnchile suele ser una referencia ({"@id": "...#primaryimage"}),
+  // que extractImage no puede resolver — caer a thumbnailUrl o og:image.
+  const imageUrl =
+    extractImage(article?.image) ??
+    article?.thumbnailUrl ??
+    ogImage?.[1] ??
+    ogImage?.[2];
+
+  // Body: contenedor con la clase `article-details` (lista mixta de tokens).
+  // Cierra antes de `<div class="main-socials`.
+  const bodyMatch = html.match(
+    /<div class="[^"]*\barticle-details\b[^"]*">([\s\S]*?)<\/div>\s*<div class="main-socials/,
+  );
+
   let body = '';
-  const contentMatch = html.match(/<p class="epigraph">[\s\S]*?<hr>\s*<div>([\s\S]*?)<\/div>\s*(?:<div class="js_post_tags"|$)/);
-
-  if (contentMatch) {
-    let content = contentMatch[1];
-    // Limpiar ads y elementos innecesarios
-    content = content.replace(/<div[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '');
-    content = content.replace(/<div[^>]*class="the-banner"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi, '');
-    // Convertir <h2> a subtítulos
-    content = content.replace(/<h2>([^<]+)<\/h2>/g, '<p><strong>$1</strong></p>');
-    // Mantener párrafos
-    content = content.replace(/<p[^>]*>([\s\S]*?)<\/p>/g, '<p>$1</p>');
-    // Limpiar tags inline pero mantener texto
-    content = content.replace(/<\/?(?:strong|b|em|i|a|span)[^>]*>/gi, '');
-    // Limpiar otros tags
-    content = content.replace(/<(?!p|\/p)[^>]+>/g, '');
-    // Limpiar espacios excesivos
-    content = content.replace(/\s+/g, ' ').trim();
-
-    body = content;
+  if (bodyMatch) {
+    let content = bodyMatch[1];
+    // Quitar el input hidden de ads
+    content = content.replace(/<input[^>]*>/gi, '');
+    // Quitar iframes (no renderean en Telegraph)
+    content = content.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+    // h2 → párrafo en negrita
+    content = content.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '<p><strong>$1</strong></p>');
+    // Normalizar párrafos (quitar atributos como class="rtejustify")
+    content = content.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '<p>$1</p>');
+    // Quitar tags inline manteniendo el texto
+    content = content.replace(/<\/?(?:strong|b|em|i|a|span|br)[^>]*>/gi, '');
+    // Quitar el resto de tags excepto <p>/</p>
+    content = content.replace(/<(?!\/?p\b)[^>]+>/g, '');
+    // Colapsar espacios
+    body = content.replace(/\s+/g, ' ').trim();
   }
 
-  // Fallback: buscar contenido en article-details
-  if (!body) {
-    const paragraphs = html.match(/<div class="article-details[\s\S]*?<div>\s*([\s\S]*?)\s*<\/div>\s*<div class="js_post_tags/);
-    if (paragraphs) {
-      let content = paragraphs[1];
-      content = content.replace(/<p[^>]*>([\s\S]*?)<\/p>/g, '<p>$1</p>');
-      content = content.replace(/<(?!p|\/p)[^>]+>/g, '');
-      body = content.replace(/\s+/g, ' ').trim();
-    }
-  }
-
-  // Agregar bajada al inicio si existe
-  if (bajada) {
-    body = `<p><em>${bajada}</em></p>\n${body}`;
+  if (subtitle && body) {
+    body = `<p><em>${subtitle}</em></p>\n${body}`;
   }
 
   if (!body) {
     throw new Error('No se pudo extraer el contenido del artículo');
   }
 
-  const images: Article['images'] = [];
-  if (imageUrl) {
-    images.push({ url: imageUrl });
-  }
+  const images: Article['images'] = imageUrl ? [{ url: imageUrl }] : undefined;
 
   return {
     title,
@@ -99,7 +112,7 @@ export async function extract(url: string): Promise<Article> {
     author,
     date,
     body,
-    images: images.length > 0 ? images : undefined,
+    images,
     url,
     source: 'cnnchile',
   };
