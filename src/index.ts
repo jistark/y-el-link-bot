@@ -24,7 +24,12 @@ await bot.api.setMyCommands([
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 if (WEBHOOK_URL) {
-  // Producción: webhook con Bun.serve
+  // Producción: webhook con Bun.serve.
+  // Eager bot.init() so botInfo (id/username) is populated before any
+  // update arrives. webhookCallback() does this lazily; we bypass it
+  // (fire-and-forget via bot.handleUpdate) so we have to call it here.
+  await bot.init();
+
   const PORT = parseInt(process.env.PORT || '10000');
 
   const server = Bun.serve({
