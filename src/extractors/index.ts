@@ -25,8 +25,8 @@ import * as ojoalatele from './ojoalatele.js';
 import * as t13 from './t13.js';
 import * as theatlantic from './theatlantic.js';
 import * as theclinic from './theclinic.js';
-import * as theverge from './theverge.js';
 import * as tvn from './tvn.js';
+import * as voxmedia from './voxmedia.js';
 import * as wapo from './wapo.js';
 import * as wired from './wired.js';
 import * as generic from './generic.js';
@@ -36,7 +36,11 @@ const URL_PATTERNS = {
   lasegunda: /lasegunda\.com/,
   latercera: /latercera\.com|lacuarta\.com/,
   df: /df\.cl/,
-  theverge: /theverge\.com/,
+  // Vox Media stack — see voxmedia/dispatch.ts for the strategy-by-host
+  // breakdown. Catches Chorus (theverge, vox, eater, polygon, sbnation,
+  // thedodo, thrillist, popsugar) and Clay (vulture, thecut, grubstreet,
+  // curbed, nymag including intelligencer/strategist sub-paths).
+  voxmedia: /(?:^|\.)(?:theverge|vox|eater|polygon|sbnation|thedodo|thrillist|popsugar|vulture|thecut|grubstreet|curbed|nymag)\.com$/,
   lun: /lun\.com/,
   nyt: /nytimes\.com/,
   wapo: /washingtonpost\.com/,
@@ -97,8 +101,8 @@ export async function extractArticle(url: string): Promise<Article> {
     case 'df':
       return df.extract(url);
 
-    case 'theverge':
-      return theverge.extract(url);
+    case 'voxmedia':
+      return voxmedia.extract(url);
 
     case 'lun':
       return lun.extract(url);
