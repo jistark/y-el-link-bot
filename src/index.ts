@@ -1,4 +1,5 @@
 import { createBot } from './bot.js';
+import { handleFetchRoute } from './server/fetch-route.js';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const webhookSecret = process.env.WEBHOOK_SECRET || crypto.randomUUID();
@@ -40,6 +41,13 @@ if (WEBHOOK_URL) {
       // Health check para Render
       if (url.pathname === '/health' || url.pathname === '/') {
         return new Response('OK', { status: 200 });
+      }
+
+      // Endpoint público de fetch via IPRoyal (auth con bearer token).
+      // Consumido por servicios externos (ej. parabus worker) que necesitan
+      // hacer scraping desde IPs residenciales sin hostear su propio proxy.
+      if (req.method === 'POST' && url.pathname === '/fetch') {
+        return handleFetchRoute(req);
       }
 
       // Webhook de Telegram (verificar secret token)

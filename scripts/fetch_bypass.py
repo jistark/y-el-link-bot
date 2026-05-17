@@ -230,6 +230,22 @@ def _load_extra_headers():
         return {}
 
 
+def _apply_overrides(use_proxy, render, country):
+    """Apply per-request overrides from FORCE_* env vars set by the TS layer.
+
+    Used by the /fetch HTTP route to enable proxy routing for domains not in
+    PROXY_DOMAINS without requiring a global env var change.
+    """
+    if os.environ.get('FORCE_PROXY') == '1' and PROXY_URL:
+        use_proxy = True
+    if os.environ.get('FORCE_RENDER') == '1':
+        render = True
+    force_country = os.environ.get('FORCE_COUNTRY')
+    if force_country:
+        country = force_country.lower()
+    return use_proxy, render, country
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: fetch_bypass.py <url> [referer] [mode]", file=sys.stderr)
@@ -251,6 +267,7 @@ def main():
         # Googlebot from datacenter IPs but accepts via residential proxy).
         use_proxy = bool(PROXY_URL) and needs_proxy(url)
         country = get_country(url) if use_proxy else None
+        use_proxy, _, country = _apply_overrides(use_proxy, False, country)
         if use_proxy:
             content, status = fetch_direct(url, headers, use_proxy=True, country=country)
             if content is not None:
@@ -268,6 +285,10 @@ def main():
     use_proxy = bool(PROXY_URL) and needs_proxy(url)
     render = needs_js(url)
     country = get_country(url) if use_proxy else None
+    # Per-request overrides from the /fetch HTTP route (FORCE_PROXY / FORCE_RENDER
+    # / FORCE_COUNTRY env vars set by src/extractors/fetch-bypass.ts). No-op when
+    # those env vars are absent, so existing Telegram-bot behavior is unchanged.
+    use_proxy, render, country = _apply_overrides(use_proxy, render, country)
 
     # When proxy renders in Chromium, it generates its own browser headers;
     # ours get stripped. Use minimal set to avoid noise.

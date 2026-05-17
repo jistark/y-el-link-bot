@@ -25,6 +25,12 @@ export interface FetchBypassOptions {
    */
   headers?: Record<string, string>;
   mode?: FetchMode;
+  /** Force routing through IPRoyal Web Unblocker regardless of PROXY_DOMAINS. */
+  forceProxy?: boolean;
+  /** ISO 3166-1 alpha-2 country code for residential exit IP (e.g. "mx"). */
+  country?: string;
+  /** Enable Chromium JS rendering in the proxy. Costlier; slower. */
+  render?: boolean;
 }
 
 export function fetchBypass(url: string, opts?: FetchBypassOptions): Promise<string>;
@@ -66,6 +72,9 @@ export function fetchBypass(
     if (headers && Object.keys(headers).length > 0) {
       env.EXTRA_HEADERS = JSON.stringify(headers);
     }
+    if (opts.forceProxy) env.FORCE_PROXY = '1';
+    if (opts.country) env.FORCE_COUNTRY = opts.country;
+    if (opts.render) env.FORCE_RENDER = '1';
 
     const proc = spawn(PYTHON_CMD, args, {
       timeout: TIMEOUT_MS,
